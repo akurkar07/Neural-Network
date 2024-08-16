@@ -3,13 +3,6 @@ import numpy as np
 from NNDependencies import *
 from keras._tf_keras.keras.datasets import mnist
 
-def numToList(input):
-    """turns a desired numerical output into an output list to be used to calculate a cost\n
-    eg. 7 -> [0,0,0,0,0,0,0,1,0,0,0]"""
-    a = [0]*10
-    a[input] = 1
-    return a
-
 with open("data.json", 'r') as file:
     data = json.load(file)
 (inputData, desiredOutputs), (test_X, test_y) = mnist.load_data()
@@ -64,11 +57,6 @@ if valid:
         data["biases"] = [[neurone.bias for neurone in layer] for layer in network.network[1:]]
         with open("data.json", 'w') as file:
             json.dump(data, file, indent=4)
-        # plt.plot(epochs, costs)
-        # plt.xlabel('Epochs')
-        # plt.ylabel('Total cost of network')
-        # plt.show()
-
 
     if testing: #FIX
         print("TESTING")
