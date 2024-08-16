@@ -1,0 +1,1 @@
+4 hours 40 mins for 30 epochs - [784,16,16,10],92.33% success rate
