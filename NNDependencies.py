@@ -10,6 +10,13 @@ def sigmoid_derivative(x):
 def cost(outputs:list,intendedNumbers:list) -> float:
     return sum([(o - i)**2 for o,i in zip(outputs, intendedNumbers)])
 
+def numToList(input):
+    """turns a desired numerical output into an output list to be used to calculate a cost\n
+    eg. 7 -> [0,0,0,0,0,0,0,1,0,0,0]"""
+    a = [0]*10
+    a[input] = 1
+    return a
+
 class Network:
     def __init__(self,data,structure:list) -> None:
         self.structure = structure  # Number of neurons in each layer
