@@ -1,5 +1,4 @@
 import random,json
-import numpy as np
 from NNDependencies import *
 from keras._tf_keras.keras.datasets import mnist
 
