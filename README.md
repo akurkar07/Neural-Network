@@ -5,4 +5,4 @@ NNDependencies holds the underlying functions for the network, neurones, activat
 data.json holds the weights after 30 epochs of training.
 NNrandomiser writes randomised weights and biases for a specified network structure to data.json
 
-This is not optimised and runs solely on the cpu so it's slow as hell
+This is not optimised and runs solely on the CPU, so this is meant mainly as an educational tool.
