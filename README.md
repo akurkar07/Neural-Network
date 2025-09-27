@@ -1,7 +1,7 @@
 # Neural Network from Scratch
 
 This project implements a fully-connected feedforward neural network from first principles in Python, without using machine learning frameworks.  
-It was trained on the :contentReference[oaicite:3]{index=3} dataset to recognise handwritten digits.
+It was trained on the MNIST dataset to recognise handwritten digits.
 
 ---
 
