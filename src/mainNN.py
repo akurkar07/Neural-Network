@@ -41,6 +41,10 @@ def parse_args():
         default=0.1,
         help="Training learning rate. Defaults to 0.1.",
     )
+    parser.add_argument(
+        "--save-plot",
+        help="Save a training cost plot to the given image path.",
+    )
     args = parser.parse_args()
 
     if args.epochs <= 0:
@@ -50,6 +54,27 @@ def parse_args():
         parser.error("--learning-rate must be greater than 0.")
 
     return args
+
+def save_cost_plot(costs, plot_path):
+    """Saves a plot of average training cost per example over each epoch."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    plot_path = Path(plot_path)
+    plot_path.parent.mkdir(parents=True, exist_ok=True)
+
+    epochs = range(1, len(costs) + 1)
+    plt.figure()
+    plt.plot(epochs, costs, marker="o")
+    plt.xlabel("Epoch")
+    plt.ylabel("Average cost per example")
+    plt.title("Training cost over time")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(plot_path)
+    plt.close()
 
 def validate_model_data(data, structure):
     """Checks saved weights and biases match the expected network structure."""
@@ -142,12 +167,16 @@ if training:
             output = network.forwardPass(normalised_input)
             total_cost += cost(output, desired_output)
             network.backwardPass(desired_output, learning_rate)  # Normalise desired output for backpropagation
+        average_cost = total_cost/len(train_inputs)
+        costs.append(average_cost)
         if epoch % interval == 0: # every 5th epoch in this case, prints update message
-            costs.append(total_cost)
-            print(f"Epoch {epoch}, Total Cost: {total_cost}, Average cost/example: {total_cost/len(train_inputs)}, LR: {learning_rate}")
+            print(f"Epoch {epoch}, Total Cost: {total_cost}, Average cost/example: {average_cost}, LR: {learning_rate}")
         lowestCost = min(total_cost,lowestCost) 
         
     print(f"Lowest Cost: {lowestCost}, lowest Cost / example: {lowestCost/len(train_inputs)}") # final update message
+    if args.save_plot:
+        save_cost_plot(costs, args.save_plot)
+        print(f"Saved cost plot: {args.save_plot}")
 
     # Update weights and biases in local memory then model file
     data["weights"] = [weights.tolist() for weights in network.weights]
