@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from NNDependencies import Network, cost, numToList
+from src.NNDependencies import Network, cost, numToList
 
 def parse_args():
     """Reads command line arguments and returns the selected run settings."""

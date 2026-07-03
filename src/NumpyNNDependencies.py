@@ -1,22 +1,22 @@
 import math
 import numpy as np
-def sigmoid(x):
-    """Returns the sigmoid activation of an input value."""
-    return 1 / (1 + math.exp(-x))  
+def sigmoid(x:np.ndarray):
+    """Does sigmoid on each element in a list."""
+    return 1 / (1 + np.exp(-x))  
  
-def sigmoid_derivative(x):
+def sigmoid_derivative(x:np.ndarray):
     """Returns the derivative of the sigmoid function at x."""
     sig = sigmoid(x)
     return sig * (1 - sig)
 
-def cost(outputs:list,intendedNumbers:list) -> float:
-    "Returns the sum of the squares of the differences between data and target"
-    return sum([(y - i)**2 for y,i in zip(outputs, intendedNumbers)])
+def cost(y:np.ndarray,i:np.ndarray) -> np.int64:
+    "Returns the sum of the squares of the differences between output from forward pass (y) and target (i)"
+    return np.sum((y-i)**2)
 
-def numToList(input:int):
+def numToList(input:int) -> np.ndarray:
     """turns a desired numerical output into an output list to be used to calculate a cost\n
     eg. 7 -> [0,0,0,0,0,0,0,1,0,0,0]"""
-    out = [0]*10
+    out = np.array([0]*10)
     out[input] = 1
     return out
 
