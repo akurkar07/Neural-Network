@@ -46,12 +46,28 @@ pip install -r requirements.txt
 
 ## Usage
 
-Run the project:
+Run the project in testing mode:
 
 ```bash
-python mainNN.py
+python mainNN.py --test
 ```
 
-By default, `mainNN.py` loads the saved model data from `data.json`, downloads MNIST through TensorFlow/Keras if needed, and evaluates the network against the test set.
+Show every test prediction:
 
-To train instead, set `training = True` in `mainNN.py`.
+```bash
+python mainNN.py --test --verbose
+```
+
+Run the project in training mode:
+
+```bash
+python mainNN.py --train
+```
+
+Training defaults to 30 epochs and a learning rate of 0.1. Override them with:
+
+```bash
+python mainNN.py --train --epochs 10 --learning-rate 0.05
+```
+
+`mainNN.py` loads the saved model data from `data.json`, downloads MNIST through TensorFlow/Keras if needed, and then runs the selected mode.
