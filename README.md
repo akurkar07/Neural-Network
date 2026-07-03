@@ -58,6 +58,12 @@ Show every test prediction:
 python mainNN.py --test --verbose
 ```
 
+TensorFlow startup logs are hidden by default. Show them with:
+
+```bash
+python mainNN.py --test --show-tf-logs
+```
+
 Run the project in training mode:
 
 ```bash

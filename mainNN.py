@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import sys
 
 import numpy as np
@@ -15,7 +16,12 @@ def parse_args():
     parser.add_argument(
         "--verbose",
         action="store_true",
-        help="Print each test prediction and cost.",
+        help="Print model details and each test prediction/cost.",
+    )
+    parser.add_argument(
+        "--show-tf-logs",
+        action="store_true",
+        help="Show TensorFlow startup logs.",
     )
     parser.add_argument(
         "--epochs",
@@ -59,6 +65,10 @@ def validate_model_data(data, structure):
 
 args = parse_args()
 
+if not args.show_tf_logs: # Hides the tensorflow logs if --show-tf-logs isn't enabled
+    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+    os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+
 # TensorFlow is imported after CLI parsing so --help and argument errors exit quickly.
 from tensorflow.keras.datasets import mnist
 
@@ -69,7 +79,8 @@ maxRange = 255 # the largest value an input can be, used to normalise inputs and
 
 structure = [784,16,16,10] # including input and output neurones
 valid = validate_model_data(data, structure)
-print(f"Valid: {valid}")
+if args.verbose:
+    print(f"Valid: {valid}")
 
 if not valid:
     sys.exit(
@@ -79,7 +90,8 @@ if not valid:
     
 L = len(structure)
 network = Network(data,structure)
-print(network)
+if args.verbose:
+    print(network)
 
 # Training
 training = args.train # either training or testing
@@ -118,7 +130,7 @@ if training:
         json.dump(data, file, indent=4)
 
 if testing: #FIX
-    print("TESTING")
+    print("Testing")
     totalCost = 0
     noOfExamples = len(test_X) # trains on all testing examples set aside to avoid overfitting
     wrong = 0
@@ -133,4 +145,7 @@ if testing: #FIX
         totalCost += thisCost
         if args.verbose:
             print(f"Given an image, NN returned {NNanswer.index(max(NNanswer))}. That should be {test_y[count]}. Cost of that example was {thisCost}")
-    print(f"Average cost/example was {totalCost/noOfExamples}, no. of incorrectly identified examples: {wrong}\nPercentage identified {(noOfExamples-wrong)*100/noOfExamples}%")
+    correct = noOfExamples - wrong
+    print(f"Accuracy: {correct * 100 / noOfExamples:.2f}% ({correct}/{noOfExamples})")
+    print(f"Incorrect: {wrong}")
+    print(f"Average cost/example: {totalCost/noOfExamples}")
