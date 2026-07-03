@@ -93,7 +93,7 @@ if args.verbose:
 if not valid:
     sys.exit(
         f"Error: {model_path} weights/biases do not match the expected network "
-        "structure. Run NNrandomiser.py to regenerate the model."
+        "structure. Run src/NNrandomiser.py to regenerate the model."
     )
     
 L = len(structure)
