@@ -1,31 +1,57 @@
 # Neural Network from Scratch
 
-This project implements a fully-connected feedforward neural network from first principles in Python, without using machine learning frameworks.  
-It was trained on the MNIST dataset to recognise handwritten digits.
+This project implements a fully connected feedforward neural network from first principles in Python, without using machine learning frameworks for the network itself.
+It uses the MNIST dataset to recognise handwritten digits.
 
 ---
 
 ## Features
+
 - Matrix-based forward propagation and backpropagation
-- Gradient descent weight updates with minibatch training
-- Custom activation functions (sigmoid, ReLU, softmax)
+- Gradient descent weight updates with training support
+- Custom sigmoid activation and cost functions
 - Configurable network architecture and hyperparameters
-- Model saving/loading (JSON)
+- Model saving/loading with JSON
 
 ---
 
 ## Project Structure
-- `mainNN.py` — Training loop and evaluation logic  
-- `NNDependencies.py` — Core neural network layers and training utilities  
-- `NNrandomiser.py` — Random weight initialisation module  
-- `data.json` — Example saved weights  
-- `outputs/` — Example training outputs (accuracy, loss)
+
+- `mainNN.py` - Training loop and evaluation logic
+- `NNDependencies.py` - Core neural network layers and training utilities
+- `NNrandomiser.py` - Random weight initialisation module
+- `data.json` - Example saved weights
+- `requirements.txt` - Python package dependencies
+
+---
+
+## Setup
+
+This project requires Python 3.9 or newer.
+
+Create and activate a virtual environment:
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
 
 ---
 
 ## Usage
-1. Clone the repository  
-2. Install dependencies (Python ≥ 3.9, `numpy`, `matplotlib`)  
-3. Run:
-   ```bash
-   python mainNN.py
+
+Run the project:
+
+```bash
+python mainNN.py
+```
+
+By default, `mainNN.py` loads the saved model data from `data.json`, downloads MNIST through TensorFlow/Keras if needed, and evaluates the network against the test set.
+
+To train instead, set `training = True` in `mainNN.py`.
