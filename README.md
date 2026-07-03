@@ -25,7 +25,7 @@ It uses the MNIST dataset to recognise handwritten digits.
 
 ---
 
-## Setup
+## Quickstart
 
 This project requires Python 3.9 or newer.
 
@@ -42,38 +42,73 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
----
-
-## Usage
-
-Run the project in testing mode:
+Test the included saved model:
 
 ```bash
 python mainNN.py --test
 ```
 
-Show every test prediction:
-
-```bash
-python mainNN.py --test --verbose
-```
-
-TensorFlow startup logs are hidden by default. Show them with:
-
-```bash
-python mainNN.py --test --show-tf-logs
-```
-
-Run the project in training mode:
-
-```bash
-python mainNN.py --train
-```
-
-Training defaults to 30 epochs and a learning rate of 0.1. Override them with:
+Train the included saved model:
 
 ```bash
 python mainNN.py --train --epochs 10 --learning-rate 0.05
 ```
 
-`mainNN.py` loads the saved model data from `data.json`, downloads MNIST through TensorFlow/Keras if needed, and then runs the selected mode.
+Create a fresh random model file:
+
+```bash
+python NNrandomiser.py models/fresh.json
+```
+
+Train and test that model:
+
+```bash
+python mainNN.py --train --model models/fresh.json
+python mainNN.py --test --model models/fresh.json
+```
+
+---
+
+## Usage
+
+### `mainNN.py`
+
+Train or test a saved model file. By default, this uses `data.json`.
+Training saves updated weights and biases back to the selected model file.
+
+```bash
+python mainNN.py --test
+python mainNN.py --train
+```
+
+Training defaults to 30 epochs and a learning rate of 0.1:
+
+```bash
+python mainNN.py --train --epochs 10 --learning-rate 0.05
+```
+
+Useful flags:
+
+- `--test` - Evaluate a model against the MNIST test set
+- `--train` - Train a model and save updated weights/biases
+- `--model PATH` - Load/save a specific model file
+- `--epochs N` - Number of training epochs
+- `--learning-rate VALUE` - Training learning rate
+- `--verbose` - Print model details and every test prediction
+- `--show-tf-logs` - Show TensorFlow startup logs
+
+### `NNrandomiser.py`
+
+Create a new random model file:
+
+```bash
+python NNrandomiser.py models/fresh.json
+```
+
+Existing model files are protected by default. To overwrite one, pass `--force` and confirm the prompt:
+
+```bash
+python NNrandomiser.py models/fresh.json --force
+```
+
+The scripts download MNIST through TensorFlow/Keras if needed. TensorFlow startup logs are hidden by default during `mainNN.py` runs.

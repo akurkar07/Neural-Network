@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 
 import numpy as np
 
@@ -22,6 +23,11 @@ def parse_args():
         "--show-tf-logs",
         action="store_true",
         help="Show TensorFlow startup logs.",
+    )
+    parser.add_argument(
+        "--model",
+        default="data.json",
+        help="Model file to load and save. Defaults to data.json.",
     )
     parser.add_argument(
         "--epochs",
@@ -69,10 +75,12 @@ if not args.show_tf_logs: # Hides the tensorflow logs if --show-tf-logs isn't en
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
     os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
-# TensorFlow is imported after CLI parsing so --help and argument errors exit quickly.
+# TensorFlow is a big import so it is imported after CLI parsing so --help and argument errors exit quickly.
 from tensorflow.keras.datasets import mnist
 
-with open("data.json", 'r') as file: # load data
+model_path = Path(args.model)
+
+with open(model_path, 'r') as file: # load data from --model path
     data = json.load(file)
 (inputData, desiredOutputs), (test_X, test_y) = mnist.load_data()
 maxRange = 255 # the largest value an input can be, used to normalise inputs and outputs
@@ -84,8 +92,8 @@ if args.verbose:
 
 if not valid:
     sys.exit(
-        "Error: data.json weights/biases do not match the expected network "
-        "structure. Run NNrandomiser.py to regenerate them or update data.json."
+        f"Error: {model_path} weights/biases do not match the expected network "
+        "structure. Run NNrandomiser.py to regenerate the model."
     )
     
 L = len(structure)
@@ -123,10 +131,10 @@ if training:
         
     print(f"Lowest Cost: {lowestCost}, lowest Cost / example: {lowestCost/len(inputData)}") # final update message
 
-    # Update weights and biases in local memory then data.json
+    # Update weights and biases in local memory then model file
     data["weights"] = [[neurone.weights for neurone in layer] for layer in network.network[1:]]
     data["biases"] = [[neurone.bias for neurone in layer] for layer in network.network[1:]]
-    with open("data.json", 'w') as file:
+    with open(model_path, 'w') as file:
         json.dump(data, file, indent=4)
 
 if testing: #FIX
