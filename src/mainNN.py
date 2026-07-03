@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from src.NNDependencies import Network, cost, numToList
+from NNDependencies import Network, cost
 
 def parse_args():
     """Reads command line arguments and returns the selected run settings."""
@@ -57,14 +57,30 @@ def validate_model_data(data, structure):
     if "weights" not in data or "biases" not in data:
         return False
 
+    expected_layers = list(zip(structure[:-1], structure[1:]))
+
     # Checks no. of layers in JSON matches structure.
-    if len(data["weights"]) != len(structure[1:]) or len(data["biases"]) != len(structure[1:]):
+    if len(data["weights"]) != len(expected_layers) or len(data["biases"]) != len(expected_layers):
         return False
 
-    # Checks no. of neurones in each layer matches structure.
-    for check in ("weights","biases"):
-        for count, layer in enumerate(data[check]):
-            if len(layer) != structure[1:][count]:
+    # Checks each weight matrix has one row per current-layer neurone and one column per previous-layer neurone.
+    for count, (previous_layer_size, current_layer_size) in enumerate(expected_layers):
+        weight_layer = data["weights"][count]
+        if len(weight_layer) != current_layer_size:
+            return False
+
+        for weights in weight_layer:
+            if len(weights) != previous_layer_size:
+                return False
+
+    # Checks each bias layer is stored as a column vector: [[bias], [bias], ...].
+    for count, (_, current_layer_size) in enumerate(expected_layers):
+        bias_layer = data["biases"][count]
+        if len(bias_layer) != current_layer_size:
+            return False
+
+        for bias in bias_layer:
+            if not isinstance(bias, list) or len(bias) != 1:
                 return False
 
     return True
@@ -84,6 +100,10 @@ with open(model_path, 'r') as file: # load data from --model path
     data = json.load(file)
 (inputData, desiredOutputs), (test_X, test_y) = mnist.load_data()
 maxRange = 255 # the largest value an input can be, used to normalise inputs and outputs
+train_inputs = inputData.reshape(len(inputData), -1).astype(float) / maxRange
+train_outputs = np.eye(10)[desiredOutputs]
+test_inputs = test_X.reshape(len(test_X), -1).astype(float) / maxRange
+test_outputs = np.eye(10)[test_y]
 
 structure = [784,16,16,10] # including input and output neurones
 valid = validate_model_data(data, structure)
@@ -115,44 +135,41 @@ if training:
     learning_rate = args.learning_rate
     for epoch in range(noOfEpochs):  # Train for set number of epochs
         total_cost = 0
-        for i, image in enumerate(inputData): # iterates through all training examples
+        for i, normalised_input in enumerate(train_inputs): # iterates through all training examples
             if i % 10000 == 0: # to show progress every 10,000th training example
                 print(f"Training example {i}")
-            desired_output = numToList(desiredOutputs[i])
-            normalised_input = np.array(image).flatten()
-            normalised_input = [i/255 for i in normalised_input]
+            desired_output = train_outputs[i]
             output = network.forwardPass(normalised_input)
             total_cost += cost(output, desired_output)
             network.backwardPass(desired_output, learning_rate)  # Normalise desired output for backpropagation
         if epoch % interval == 0: # every 5th epoch in this case, prints update message
             costs.append(total_cost)
-            print(f"Epoch {epoch}, Total Cost: {total_cost}, Average cost/example: {total_cost/len(inputData)}, LR: {learning_rate}")
+            print(f"Epoch {epoch}, Total Cost: {total_cost}, Average cost/example: {total_cost/len(train_inputs)}, LR: {learning_rate}")
         lowestCost = min(total_cost,lowestCost) 
         
-    print(f"Lowest Cost: {lowestCost}, lowest Cost / example: {lowestCost/len(inputData)}") # final update message
+    print(f"Lowest Cost: {lowestCost}, lowest Cost / example: {lowestCost/len(train_inputs)}") # final update message
 
     # Update weights and biases in local memory then model file
-    data["weights"] = [[neurone.weights for neurone in layer] for layer in network.network[1:]]
-    data["biases"] = [[neurone.bias for neurone in layer] for layer in network.network[1:]]
+    data["weights"] = [weights.tolist() for weights in network.weights]
+    data["biases"] = [biases.tolist() for biases in network.biases]
     with open(model_path, 'w') as file:
         json.dump(data, file, indent=4)
 
 if testing: #FIX
     print("Testing")
     totalCost = 0
-    noOfExamples = len(test_X) # trains on all testing examples set aside to avoid overfitting
+    noOfExamples = len(test_inputs) # tests on examples set aside to avoid overfitting
     wrong = 0
-    for count, image in enumerate(test_X): # all testing examples
-        desired = numToList(test_y[count])
-        normalised_input = np.array(image).flatten() #turns 2d array 1d
-        normalised_input = [i/255 for i in normalised_input]
+    for count, normalised_input in enumerate(test_inputs): # all testing examples
+        desired = test_outputs[count]
         NNanswer = network.forwardPass(normalised_input)
-        if NNanswer.index(max(NNanswer)) != test_y[count]: # increments counter for each incorrect answer
+        prediction = int(np.argmax(NNanswer))
+        if prediction != test_y[count]: # increments counter for each incorrect answer
             wrong += 1
         thisCost = cost(desired,NNanswer)
         totalCost += thisCost
         if args.verbose:
-            print(f"Given an image, NN returned {NNanswer.index(max(NNanswer))}. That should be {test_y[count]}. Cost of that example was {thisCost}")
+            print(f"Given an image, NN returned {prediction}. That should be {test_y[count]}. Cost of that example was {thisCost}")
     correct = noOfExamples - wrong
     print(f"Accuracy: {correct * 100 / noOfExamples:.2f}% ({correct}/{noOfExamples})")
     print(f"Incorrect: {wrong}")

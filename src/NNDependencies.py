@@ -1,22 +1,21 @@
-import math
 import numpy as np
-def sigmoid(x):
-    """Returns the sigmoid activation of an input value."""
-    return 1 / (1 + math.exp(-x))  
+def sigmoid(x:np.ndarray):
+    """Does sigmoid on each element in a NumPy array."""
+    return 1 / (1 + np.exp(-x))  
  
-def sigmoid_derivative(x):
+def sigmoid_derivative(x:np.ndarray):
     """Returns the derivative of the sigmoid function at x."""
     sig = sigmoid(x)
     return sig * (1 - sig)
 
-def cost(outputs:list,intendedNumbers:list) -> float:
-    "Returns the sum of the squares of the differences between data and target"
-    return sum([(y - i)**2 for y,i in zip(outputs, intendedNumbers)])
+def cost(y:np.ndarray,i:np.ndarray) -> np.int64:
+    "Returns the sum of the squares of the differences between output from forward pass (y) and target (i)"
+    return np.sum((y-i)**2)
 
-def numToList(input:int):
+def numToList(input:int) -> np.ndarray:
     """turns a desired numerical output into an output list to be used to calculate a cost\n
     eg. 7 -> [0,0,0,0,0,0,0,1,0,0,0]"""
-    out = [0]*10
+    out = np.array([0]*10)
     out[input] = 1
     return out
 
@@ -26,96 +25,70 @@ class Network:
         """Builds the network layers from saved weights, biases, and structure."""
         self.structure = structure  # Number of neurons in each layer
         self.L = len(structure)
-        self.network = []
-        for layer in range(self.L): # creates the network structure in form [layer,layer,layer] where each layer is in form [neurone,neurone,neurone]
-            a = []
-            for num in range(self.structure[layer]):
-                if layer != 0:
-                    bias = data["biases"][layer-1][num] # writes weights and biases to neurone as it is created
-                    weights = data["weights"][layer-1][num]
-                    a.append(Neuron(layer,num,weights,bias))
-                else:
-                    a.append(Neuron(layer,num))
-            self.network.append(a)
+
+        self.weights = [np.array(layer, dtype=float) for layer in data['weights']]
+        # Biases are reshaped into column vectors so W @ activation + bias stays (layer_size, 1).
+        self.biases = [np.array(layer, dtype=float).reshape(-1,1) for layer in data["biases"]]
     
-    def forwardPass(self, normalisedInputs: list):
-        """        
-        Takes a normalised list of inputs, assigns them to the input neurones and does a forward pass.\n
+    def forwardPass(self, normalisedInputs: np.ndarray):
+        """
+        Takes a normalised list of inputs and runs a matrix-based forward pass.
         Returns normalised result.
         """
-        fromPrevLayer = normalisedInputs
-        forNextLayer = []
-        for layer in self.network:
-            for neurone in layer:
-                # each neurone gets all the activations from the previous layer, appending its own activation to the list to be fed into the next layer
-                forNextLayer.append(neurone.feedforward(fromPrevLayer)) 
-            fromPrevLayer = forNextLayer[:] # shallow copy of the data being passed forward to avoid it being edited
-            forNextLayer = []
-        return fromPrevLayer
+        # Inputs are reshaped into a column vector to match matrix multiplication dimensions.
+        activation = np.array(normalisedInputs, dtype=float).reshape(-1,1)
 
-    def backwardPass(self,normalisedOutputs:list,learningRate):
+        self.activations = [activation]
+        self.z_values = []
+
+        for weights, bias in zip(self.weights, self.biases):
+            z = weights @ activation + bias # @ is numpy's matrix multiply operator since * is element-wise
+            activation = sigmoid(z)
+
+            self.z_values.append(z)
+            self.activations.append(activation)
+
+        return activation.flatten()
+
+    def backwardPass(self,normalisedOutputs:np.ndarray,learningRate):
         """
         Calculates gradients of output layer, then backpropagates error through layers until first hidden layer
         """
+        if not hasattr(self, "activations") or not hasattr(self, "z_values"):
+            raise RuntimeError("forwardPass must be called before backwardPass.")
 
-        fromSubsequentLayer = [normalisedOutputs,0] # these are normalised desired values with the 0 meaning no subsequent derivatives
-        forNextLayer = [[],[]]
-        for count, layer in enumerate(reversed(self.network[1:])):  # Excluding input neurons
-            #before getting the errors of the neurones, compile the activations of the next layer to calculate the gradients for weights
-            nextActivations = [neurone.activation for neurone in self.network[self.L-count-2]]
-            for neurone in layer: # compiles a list of the errors and weights of each layer whilst using that data from the layer after it
-                error = neurone.learn(fromSubsequentLayer,nextActivations,learningRate)
-                forNextLayer[0].append(error)
-                forNextLayer[1].append(neurone.weights)
-            fromSubsequentLayer = [forNextLayer[0], np.array(forNextLayer[1][:]).transpose().tolist()] # weight matrix transposed to enable dot product
-            forNextLayer = [[], []]
+        desired_outputs = np.array(normalisedOutputs, dtype=float).reshape(-1,1)
+        weight_gradients = [None] * len(self.weights)
+        bias_gradients = [None] * len(self.biases)
+
+        # Output layer gradient for squared error cost.
+        error = 2 * (self.activations[-1] - desired_outputs) * sigmoid_derivative(self.z_values[-1])
+        weight_gradients[-1] = error @ self.activations[-2].T
+        bias_gradients[-1] = error
+
+        # Hidden layer gradients, moving backwards through the network.
+        for layer in range(len(self.weights) - 2, -1, -1):
+            error = (self.weights[layer + 1].T @ error) * sigmoid_derivative(self.z_values[layer])
+            weight_gradients[layer] = error @ self.activations[layer].T
+            bias_gradients[layer] = error
+
+        self.weights = [
+            weights - learningRate * gradient
+            for weights, gradient in zip(self.weights, weight_gradients)
+        ]
+        self.biases = [
+            bias - learningRate * gradient
+            for bias, gradient in zip(self.biases, bias_gradients)
+        ]
 
     def __repr__(self) -> str:
         """Returns a readable summary of the number of neurones in each layer."""
-        lst = []
-        for count, layer in enumerate(self.network):
-            lst.append(f"Layer {count}: {len(layer)} neurones.")
-        return "NETWORK: \n"+"\n".join(lst) + "\n------------"
+        lines = []
+        for count, size in enumerate(self.structure):
+            lines.append(f"Layer {count}: {size} neurones.")
 
-class Neuron:
-    """Represents one neurone in a network layer."""
-    def __init__(self,layer,num,weights=0,bias=[0]):
-        """Creates a neurone with its layer, index, weights, and bias."""
-        self.layer = layer
-        self.num = num # which neurone in the layer it is
-        self.label = f"|Layer {self.layer}, Number {self.num}| "
-        if type(bias) != float: # not ideal
-            self.bias = bias[0]
-        else:
-            self.bias = bias
-        self.weights = weights
+        lines.append("Weight matrices:")
+        for count, weights in enumerate(self.weights):
+            lines.append(f"W{count + 1}: {weights.shape}")
 
-    def feedforward(self, inputs:list):
-        """Calculates and returns this neurone's activation from input values."""
-        if self.layer == 0: # input neurones have no weights or biases so their activation is just whatever input they receive
-            self.activation = inputs[self.num]
-        else:
-            self.z = sum([x * w for x,w in zip(inputs, self.weights)]) + self.bias # dot product of previous activations and weights, plus bias
-            self.activation = sigmoid(self.z) #activation function applied here
-        return self.activation
-
-    def learn(self,inputs:list,nextActivations,learningRate):
-        """returns only the error of a neurone for now.\n
-        Inputs will either be normalised desired values or the errors of the subsequent layer's neurones\n
-        Inputs formatted [derivatives,subsequentWeights]"""
-        derivatives = inputs[0] 
-        d_a_d_z = sigmoid_derivative(self.z) # derivative of activation w.r.t z for layer L
-        if inputs[1] == 0: 
-            error = d_a_d_z * 2 * (self.activation-derivatives[self.num]) # not really derivatives, more like desireds
-        else:# the sum of the products of the weights attached from this neurone to all subsequent neurones and their bias gradients
-            subsequentWeights = inputs[1][self.num if self.num < len(inputs[1]) else -1]
-            error =  d_a_d_z* sum([w * x for w,x in zip(subsequentWeights, derivatives)])  # dot product of the derivatives and the weights from L+1
-        self.error = error
-        self.bias -= learningRate*error # the neurone's weights and bias is updated
-        self.weights = [weight-learningRate*error*nextActivations[count] for count,weight in enumerate(self.weights)]
-
-        return error
-
-    def __repr__(self) -> str:
-        """Returns a readable label for this neurone."""
-        return self.label
+        return "NETWORK: \n"+"\n".join(lines) + "\n------------"

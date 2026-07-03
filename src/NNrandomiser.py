@@ -21,6 +21,7 @@ def randomise_model(structure):
     """Creates random weights and biases for the given network structure."""
     return {
         "weights": [np.random.randn(y, x).tolist() for x, y in zip(structure[:-1], structure[1:])],
+        # Biases are stored as column vectors to match the matrix-based network shape.
         "biases": [np.random.randn(y, 1).tolist() for y in structure[1:]],
     }
 
