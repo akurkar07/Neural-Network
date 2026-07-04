@@ -43,7 +43,11 @@ def parse_args():
     )
     parser.add_argument(
         "--save-plot",
-        help="Save a training cost plot to the given image path.",
+        help="Save an average training cost per epoch plot to the given image path.",
+    )
+    parser.add_argument(
+        "--save-accuracy-plot",
+        help="Save a test accuracy per epoch plot to the given image path.",
     )
     args = parser.parse_args()
 
@@ -55,8 +59,8 @@ def parse_args():
 
     return args
 
-def save_cost_plot(costs, plot_path):
-    """Saves a plot of average training cost per example over each epoch."""
+def save_metric_plot(values, plot_path, y_label):
+    """Saves an epoch-based training metric plot."""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -65,16 +69,35 @@ def save_cost_plot(costs, plot_path):
     plot_path = Path(plot_path)
     plot_path.parent.mkdir(parents=True, exist_ok=True)
 
-    epochs = range(1, len(costs) + 1)
+    epochs = range(1, len(values) + 1)
     plt.figure()
-    plt.plot(epochs, costs, marker="o")
+    plt.plot(epochs, values)
     plt.xlabel("Epoch")
-    plt.ylabel("Average cost per example")
-    plt.title("Training cost over time")
-    plt.grid(True)
-    plt.tight_layout()
+    plt.ylabel(y_label)
     plt.savefig(plot_path)
     plt.close()
+
+def evaluate_network(network, test_inputs, test_outputs, test_y, verbose=False):
+    """Tests the network and returns accuracy, wrong count, and average cost."""
+    totalCost = 0
+    wrong = 0
+
+    for count, normalised_input in enumerate(test_inputs): # all testing examples
+        desired = test_outputs[count]
+        NNanswer = network.forwardPass(normalised_input)
+        prediction = int(np.argmax(NNanswer))
+        if prediction != test_y[count]: # increments counter for each incorrect answer
+            wrong += 1
+        thisCost = cost(desired,NNanswer)
+        totalCost += thisCost
+        if verbose:
+            print(f"Given an image, NN returned {prediction}. That should be {test_y[count]}. Cost of that example was {thisCost}")
+
+    noOfExamples = len(test_inputs)
+    correct = noOfExamples - wrong
+    accuracy = correct * 100 / noOfExamples
+    average_cost = totalCost/noOfExamples
+    return accuracy, wrong, average_cost
 
 def validate_model_data(data, structure):
     """Checks saved weights and biases match the expected network structure."""
@@ -153,7 +176,8 @@ testing = not training
 if training:
     print("Training")
     lowestCost = float("inf")
-    costs = []
+    average_costs = []
+    accuracies = []
     noOfEpochs = args.epochs
     interval = 5 # what interval to print update message to console to
     #epochs = [i*100 for i in range(int(noOfEpochs/100))]
@@ -165,18 +189,26 @@ if training:
                 print(f"Training example {i}")
             desired_output = train_outputs[i]
             output = network.forwardPass(normalised_input)
-            total_cost += cost(output, desired_output)
+            example_cost = cost(output, desired_output)
+            total_cost += example_cost
             network.backwardPass(desired_output, learning_rate)  # Normalise desired output for backpropagation
         average_cost = total_cost/len(train_inputs)
-        costs.append(average_cost)
+        average_costs.append(float(average_cost))
+        if args.save_accuracy_plot:
+            accuracy, _, _ = evaluate_network(network, test_inputs, test_outputs, test_y)
+            accuracies.append(accuracy)
+            print(f"Epoch {epoch}, Test accuracy: {accuracy:.2f}%")
         if epoch % interval == 0: # every 5th epoch in this case, prints update message
             print(f"Epoch {epoch}, Total Cost: {total_cost}, Average cost/example: {average_cost}, LR: {learning_rate}")
         lowestCost = min(total_cost,lowestCost) 
         
     print(f"Lowest Cost: {lowestCost}, lowest Cost / example: {lowestCost/len(train_inputs)}") # final update message
     if args.save_plot:
-        save_cost_plot(costs, args.save_plot)
+        save_metric_plot(average_costs, args.save_plot, "Average cost per training example")
         print(f"Saved cost plot: {args.save_plot}")
+    if args.save_accuracy_plot:
+        save_metric_plot(accuracies, args.save_accuracy_plot, "Test accuracy (%)")
+        print(f"Saved accuracy plot: {args.save_accuracy_plot}")
 
     # Update weights and biases in local memory then model file
     data["weights"] = [weights.tolist() for weights in network.weights]
@@ -186,20 +218,9 @@ if training:
 
 if testing: #FIX
     print("Testing")
-    totalCost = 0
     noOfExamples = len(test_inputs) # tests on examples set aside to avoid overfitting
-    wrong = 0
-    for count, normalised_input in enumerate(test_inputs): # all testing examples
-        desired = test_outputs[count]
-        NNanswer = network.forwardPass(normalised_input)
-        prediction = int(np.argmax(NNanswer))
-        if prediction != test_y[count]: # increments counter for each incorrect answer
-            wrong += 1
-        thisCost = cost(desired,NNanswer)
-        totalCost += thisCost
-        if args.verbose:
-            print(f"Given an image, NN returned {prediction}. That should be {test_y[count]}. Cost of that example was {thisCost}")
+    accuracy, wrong, average_cost = evaluate_network(network, test_inputs, test_outputs, test_y, args.verbose)
     correct = noOfExamples - wrong
-    print(f"Accuracy: {correct * 100 / noOfExamples:.2f}% ({correct}/{noOfExamples})")
+    print(f"Accuracy: {accuracy:.2f}% ({correct}/{noOfExamples})")
     print(f"Incorrect: {wrong}")
-    print(f"Average cost/example: {totalCost/noOfExamples}")
+    print(f"Average cost/example: {average_cost}")
