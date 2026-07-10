@@ -3,6 +3,8 @@
 This project implements a fully connected feedforward neural network from first principles in Python, without using machine learning frameworks for the network itself.
 It uses the MNIST dataset to recognise handwritten digits.
 
+I built this as a learning tool to understand matrix-based gradient descent from scratch. The first version was written in 2023 completely blind, using only 3Blue1Brown's maths tutorial videos on neural networks and gradient descent as guidance, especially [Gradient descent, how neural networks learn](https://www.youtube.com/watch?v=IHZwWFHWa-w).
+
 ---
 
 ## Features
@@ -12,6 +14,20 @@ It uses the MNIST dataset to recognise handwritten digits.
 - Custom sigmoid activation and cost functions
 - Configurable network architecture and hyperparameters
 - Model saving/loading with JSON
+
+---
+
+## Design Notes
+
+The core network is intentionally written around arrays and matrix operations:
+
+- each layer stores a weight matrix and bias vector
+- forward propagation uses `weights @ activation + bias`
+- backpropagation uses matrix products, transposes, element-wise sigmoid derivatives, and gradient updates
+
+That makes the project a good candidate for a GPU version with CuPy. In principle, most NumPy calls in the core math can be swapped for CuPy equivalents because CuPy mirrors much of the NumPy API and runs those array operations on the GPU.
+
+A GPU version should still be designed carefully around data movement. The important rule is to keep arrays on the GPU during training instead of repeatedly converting between NumPy arrays and CuPy arrays. The algorithm does not need to be redesigned around manual parallelism; the matrix operations already expose parallel work, and CuPy delegates that work to CUDA kernels. The main redesign is therefore an array-backend layer, for example choosing `numpy` or `cupy` as `xp`, plus explicit conversion when loading JSON, saving JSON, or interacting with TensorFlow/Keras data.
 
 ---
 
