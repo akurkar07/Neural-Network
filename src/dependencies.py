@@ -1,4 +1,5 @@
 import numpy as np
+
 def sigmoid(x:np.ndarray):
     """Does sigmoid on each element in a NumPy array."""
     return 1 / (1 + np.exp(-x))  
@@ -30,14 +31,10 @@ class Network:
         # Biases are reshaped into column vectors so W @ activation + bias stays (layer_size, 1).
         self.biases = [np.array(layer, dtype=float).reshape(-1,1) for layer in data["biases"]]
     
-    def forwardPass(self, normalisedInputs: np.ndarray):
+    def _forward_columns(self, activation: np.ndarray):
         """
-        Takes a normalised list of inputs and runs a matrix-based forward pass.
-        Returns normalised result.
+        Runs a forward pass where each column is one training example.
         """
-        # Inputs are reshaped into a column vector to match matrix multiplication dimensions.
-        activation = np.array(normalisedInputs, dtype=float).reshape(-1,1)
-
         self.activations = [activation]
         self.z_values = []
 
@@ -48,29 +45,57 @@ class Network:
             self.z_values.append(z)
             self.activations.append(activation)
 
+        return activation
+
+    def forwardPass(self, normalisedInputs: np.ndarray):
+        """
+        Takes a normalised list of inputs and runs a matrix-based forward pass.
+        Returns normalised result.
+        """
+        # Inputs are reshaped into a column vector to match matrix multiplication dimensions.
+        activation = np.array(normalisedInputs, dtype=float).reshape(-1,1)
+        activation = self._forward_columns(activation)
+
         return activation.flatten()
+
+    def forwardBatch(self, normalisedInputs: np.ndarray):
+        """
+        Takes a batch of normalised inputs and returns one output row per example.
+        """
+        # Batch rows become columns so layer math stays W @ A + b.
+        activation = np.array(normalisedInputs, dtype=float).T
+        activation = self._forward_columns(activation)
+
+        return activation.T
 
     def backwardPass(self,normalisedOutputs:np.ndarray,learningRate):
         """
         Calculates gradients of output layer, then backpropagates error through layers until first hidden layer
         """
+        self.backwardBatch(np.array(normalisedOutputs, dtype=float).reshape(1,-1), learningRate)
+
+    def backwardBatch(self, normalisedOutputs:np.ndarray, learningRate):
+        """
+        Calculates average gradients for a batch, then updates weights and biases.
+        """
         if not hasattr(self, "activations") or not hasattr(self, "z_values"):
             raise RuntimeError("forwardPass must be called before backwardPass.")
 
-        desired_outputs = np.array(normalisedOutputs, dtype=float).reshape(-1,1)
+        desired_outputs = np.array(normalisedOutputs, dtype=float).T
+        batch_size = desired_outputs.shape[1]
         weight_gradients = [None] * len(self.weights)
         bias_gradients = [None] * len(self.biases)
 
         # Output layer gradient for squared error cost.
         error = 2 * (self.activations[-1] - desired_outputs) * sigmoid_derivative(self.z_values[-1])
-        weight_gradients[-1] = error @ self.activations[-2].T
-        bias_gradients[-1] = error
+        weight_gradients[-1] = (error @ self.activations[-2].T) / batch_size
+        bias_gradients[-1] = np.mean(error, axis=1, keepdims=True)
 
         # Hidden layer gradients, moving backwards through the network.
         for layer in range(len(self.weights) - 2, -1, -1):
             error = (self.weights[layer + 1].T @ error) * sigmoid_derivative(self.z_values[layer])
-            weight_gradients[layer] = error @ self.activations[layer].T
-            bias_gradients[layer] = error
+            weight_gradients[layer] = (error @ self.activations[layer].T) / batch_size
+            bias_gradients[layer] = np.mean(error, axis=1, keepdims=True)
 
         self.weights = [
             weights - learningRate * gradient

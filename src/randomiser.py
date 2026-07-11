@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-structure = [784,16,16,10]
+from data import STRUCTURE
 
 def parse_args():
     """Reads command line arguments and returns the model output settings."""
@@ -45,7 +45,7 @@ def main():
     model_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(model_path, "w") as file:
-        json.dump(randomise_model(structure), file, indent=4)
+        json.dump(randomise_model(STRUCTURE), file, indent=4)
 
     print(f"Created random model: {model_path}")
 

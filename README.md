@@ -33,9 +33,12 @@ A GPU version should still be designed carefully around data movement. The impor
 
 ## Project Structure
 
-- `src/mainNN.py` - Training loop and evaluation logic
-- `src/NNDependencies.py` - Core neural network layers and training utilities
-- `src/NNrandomiser.py` - Random weight initialisation module
+- `src/main.py` - Command-line entry point for training, testing, and benchmarking
+- `src/dependencies.py` - Core neural network layers and matrix operations
+- `src/data.py` - Model validation, model JSON loading/saving, and MNIST loading
+- `src/training.py` - Shared training, evaluation, batching, and metric plotting helpers
+- `src/benchmark.py` - Batch-size benchmark recording and graph generation
+- `src/randomiser.py` - Random weight initialisation module
 - `data.json` - Example saved weights
 - `requirements.txt` - Python package dependencies
 
@@ -54,59 +57,91 @@ python -m venv .venv
 pip install -r requirements.txt
 
 # Create, train, and test a fresh random model
-python src/NNrandomiser.py models/fresh.json
-python src/mainNN.py --train --model models/fresh.json --epochs 1 --learning-rate 0.1
-python src/mainNN.py --test --model models/fresh.json
+python src/randomiser.py models/fresh.json
+python src/main.py --train --model models/fresh.json --epochs 1 --learning-rate 0.1
+python src/main.py --test --model models/fresh.json
 ```
 
 To test the included saved model only:
 
 ```powershell
-python src/mainNN.py --test
+python src/main.py --test
 ```
 
 ---
 
 ## Usage
 
-### `mainNN.py`
+### `main.py`
 
 Train or test a saved model file. By default, this uses `data.json`.
 Training saves updated weights and biases back to the selected model file.
 
 ```bash
-python src/mainNN.py --test
-python src/mainNN.py --train
+python src/main.py --test
+python src/main.py --train
 ```
 
 Training defaults to 30 epochs and a learning rate of 0.1:
 
 ```bash
-python src/mainNN.py --train --epochs 10 --learning-rate 0.05
+python src/main.py --train --epochs 10 --learning-rate 0.05
 ```
 
 Useful flags:
 
 - `--test` - Evaluate a model against the MNIST test set
 - `--train` - Train a model and save updated weights/biases
+- `--benchmark-batches` - Compare training cost, timing, throughput, and test accuracy across batch sizes
 - `--model PATH` - Load/save a specific model file
 - `--epochs N` - Number of training epochs
 - `--learning-rate VALUE` - Training learning rate
+- `--batch-size N` - Number of examples per training update
+- `--batch-sizes LIST` - Comma-separated batch sizes for benchmarking, for example `1,8,32,128`
+- `--benchmark-train-limit N` - Limit benchmark training examples for quicker comparisons
+- `--benchmark-test-limit N` - Limit benchmark test examples for quicker comparisons
+- `--benchmark-output PATH` - Save benchmark summary stats as CSV
+- `--benchmark-history-output PATH` - Save per-epoch benchmark stats as CSV
+- `--benchmark-plot PATH` - Save benchmark comparison graphs
 - `--verbose` - Print model details and every test prediction
 - `--show-tf-logs` - Show TensorFlow startup logs
 
-### `NNrandomiser.py`
+Train with mini-batches:
+
+```bash
+python src/main.py --train --model models/fresh.json --epochs 5 --learning-rate 0.1 --batch-size 32
+```
+
+Benchmark different batch sizes from the same starting model:
+
+```bash
+python src/main.py --benchmark-batches --model models/fresh.json --epochs 1 --batch-sizes 1,8,16,32,64,128
+```
+
+By default, benchmark results are saved to:
+
+- `outputs/batch_benchmark_summary.csv`
+- `outputs/batch_benchmark_history.csv`
+- `outputs/batch_benchmark_stats.png`
+
+For a quick benchmark while experimenting, limit the dataset:
+
+```bash
+python src/main.py --benchmark-batches --model models/fresh.json --epochs 1 --batch-sizes 1,16,64,256 --benchmark-train-limit 5000 --benchmark-test-limit 1000
+```
+
+### `randomiser.py`
 
 Create a new random model file:
 
 ```bash
-python src/NNrandomiser.py models/fresh.json
+python src/randomiser.py models/fresh.json
 ```
 
 Existing model files are protected by default. To overwrite one, pass `--force` and confirm the prompt:
 
 ```bash
-python src/NNrandomiser.py models/fresh.json --force
+python src/randomiser.py models/fresh.json --force
 ```
 
-The scripts download MNIST through TensorFlow/Keras if needed. TensorFlow startup logs are hidden by default during `mainNN.py` runs.
+The scripts download MNIST through TensorFlow/Keras if needed. TensorFlow startup logs are hidden by default during `main.py` runs.
