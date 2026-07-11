@@ -31,6 +31,27 @@ A GPU version should still be designed carefully around data movement. The impor
 
 ---
 
+## Batch Processing
+
+The original training loop updated the model after every image. With per-image processing, one MNIST example is reshaped into a column vector, passed through the network, backpropagated, and immediately used to update the weights.
+
+Mini-batch processing groups multiple images into one matrix. For example, batch size `16` turns sixteen `(784,)` inputs into a single `(784, 16)` activation matrix internally. The same matrix-based forward and backward equations still apply, but each update uses the average gradient from sixteen examples instead of one example.
+
+This matters because the expensive work is matrix multiplication. Doing more examples per matrix operation reduces Python loop overhead and gives NumPy larger, more efficient array operations to run. It also matches the shape of the later GPU/CuPy version: fewer, larger matrix operations are much better for GPU acceleration than many tiny per-image operations.
+
+Full MNIST benchmark, using `60,000` training examples, `10,000` test examples, 5 epochs, and learning rate `0.1`:
+
+![Batch size benchmark comparing per-image processing with batch size 16](docs/assets/batch_1_vs_16_full_stats.png)
+
+| Batch size | Processing style | Weight updates | Total time | Examples/sec | Test accuracy |
+|---:|---|---:|---:|---:|---:|
+| 1 | per-image update | 300,000 | 83.96s | 3,573.20 | 92.59% |
+| 16 | mini-batch update | 18,750 | 5.68s | 52,850.24 | 92.40% |
+
+Batch size `16` was about `14.8x` faster in this run while keeping almost the same accuracy. The per-image version made more frequent updates and ended slightly higher on accuracy, but it took far longer. The mini-batch version is usually the better trade-off when the goal is efficient training, especially as the project moves toward a GPU backend.
+
+---
+
 ## Project Structure
 
 - `src/main.py` - Command-line entry point for training, testing, and benchmarking
