@@ -183,4 +183,5 @@ python -m unittest discover -s tests -v
 - [Batch processing analysis](docs/analysis/batch-processing.md)
 - [CPU and GPU performance report](docs/analysis/gpu-performance-report.md)
 - [Medium-model GPU follow-up](docs/analysis/gpu-medium-model-follow-up.md)
+- [Medium-model quality training](docs/analysis/medium-model-quality-training.md)
 - [CPU and GPU benchmark methodology](docs/analysis/benchmark-methodology.md)
