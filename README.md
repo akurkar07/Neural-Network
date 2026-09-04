@@ -31,7 +31,7 @@ A GPU version should still be designed carefully around data movement. The impor
 
 ## GPU Processing
 
-The network supports NumPy for CPU execution and CuPy for CUDA GPU execution. The full MNIST comparison produced identical training results, but NumPy was `3.9x` faster for the current small model. See the [CPU and GPU performance report](docs/gpu-performance-report.md) for the benchmark results, explanation, and steps toward a GPU advantage.
+The network supports NumPy for CPU execution and CuPy for CUDA GPU execution. The full MNIST comparison produced identical training results, but NumPy was `3.9x` faster for the current small model. See the [CPU and GPU performance report](docs/gpu-performance-report.md), [medium-model GPU follow-up](docs/gpu-medium-model-follow-up.md), and [benchmark methodology](docs/benchmark-methodology.md) for results, hardware tradeoffs, and fair comparison guidance.
 
 Install a CuPy wheel matching the installed CUDA runtime. For current CUDA 12 systems:
 
@@ -151,6 +151,8 @@ Useful flags:
 - `--learning-rate VALUE` - Training learning rate
 - `--batch-size N` - Number of examples per training update
 - `--batch-sizes LIST` - Comma-separated batch sizes for benchmarking, for example `1,8,32,128`
+- `--cpu-batch-sizes LIST` - Optional NumPy-only batch-size sweep for best-tested CPU throughput
+- `--gpu-batch-sizes LIST` - Optional CuPy-only batch-size sweep for best-tested GPU throughput
 - `--benchmark-train-limit N` - Limit benchmark training examples for quicker comparisons
 - `--benchmark-test-limit N` - Limit benchmark test examples for quicker comparisons
 - `--benchmark-runs N` - Recorded runs per backend and batch size; defaults to 3

@@ -12,20 +12,24 @@ The benchmark used the full MNIST dataset for one epoch with a Xavier-initialize
 - Test examples: `10,000`
 - Learning rate: `0.1`
 - Recorded runs per configuration: `3`
-- CuPy warm-up batches before each run: `1`
+- Warm-up batches before each recorded run: `1` for both backends
 - Data type: `float32`
 
 ![Medium model NumPy and CuPy benchmark](assets/gpu_medium_stats.png)
 
 ## Results
 
-| Batch size | NumPy median examples/sec | CuPy median examples/sec | CuPy advantage | Matching test accuracy |
+| Batch size | NumPy median examples/sec | CuPy median examples/sec | Matched speedup | Matching test accuracy |
 |---:|---:|---:|---:|---:|
-| 256 | 22,762.95 | 87,890.54 | 3.9x | 41.68% |
-| 1024 | 26,005.88 | 331,404.01 | 12.7x | 19.63% |
-| 2048 | 26,089.61 | 583,037.68 | 22.3x | 16.36% |
+| 256 | 21,908.39 | 87,919.62 | 4.0x | 41.68% |
+| 1024 | 24,267.65 | 308,846.60 | 12.7x | 19.63% |
+| 2048 | 22,866.23 | 548,886.08 | 24.0x | 16.36% |
+| 4096 | 25,613.13 | 713,056.54 | 27.8x | 12.19% |
+| 8192 | 25,688.25 | 742,582.53 | 28.9x | 12.14% |
 
-CuPy was faster at every tested batch size. At batch size `2048`, its median throughput was `22.3x` higher than NumPy's. CPU and GPU runs reached the same final accuracy and cost for every matching configuration, so the difference is a performance crossover rather than a change in training semantics.
+CuPy was faster at every tested batch size. The best observed warmed throughput was `25,688` examples/sec for NumPy and `742,583` for CuPy, both at batch size `8192`. This is a `28.9x` matched-workload speedup, not a claim of either device's theoretical peak. CPU and GPU runs reached the same final accuracy and cost for every matching configuration, so the difference is a performance crossover rather than a change in training semantics.
+
+At batch size `8192`, median operation end-to-end time was `2.76s` for NumPy and `0.41s` for CuPy, a `6.7x` GPU advantage. This includes model construction, data conversion to the selected backend, training, and final evaluation; it excludes MNIST loading and Python/CUDA process startup. See the [benchmark methodology](benchmark-methodology.md) for the exact timing boundaries and remaining limitations.
 
 ## Why the GPU Won
 
@@ -62,4 +66,4 @@ The implementation now supports the conditions used in this experiment:
 - `--benchmark-runs` defaults to three and CuPy warm-up is controlled by `--benchmark-warmup-batches`.
 - Summary CSV rows include median, minimum, and maximum duration values.
 
-Raw records are written to `outputs/gpu_medium_summary.csv` and `outputs/gpu_medium_history.csv`. The low one-epoch accuracies should not be compared directly with the earlier five-epoch small-model result; longer accuracy benchmarks should tune the learning rate for each batch-size regime.
+Raw records are written to `outputs/gpu_medium_peak_summary.csv` and `outputs/gpu_medium_peak_history.csv`. The low one-epoch accuracies should not be compared directly with the earlier five-epoch small-model result; longer accuracy benchmarks should tune the learning rate for each batch-size regime.

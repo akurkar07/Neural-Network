@@ -1,6 +1,7 @@
 import copy
 import csv
 import statistics
+import time
 from pathlib import Path
 
 from dependencies import Network, get_backend
@@ -35,12 +36,23 @@ def add_summary_statistics(summary_records):
             if record["backend"] == backend and record["batch_size"] == batch_size
         ]
         durations = [record["total_seconds"] for record in records]
+        end_to_end_durations = [record["end_to_end_seconds"] for record in records]
         throughputs = [record["examples_per_second"] for record in records]
         for record in records:
             record["median_total_seconds"] = statistics.median(durations)
             record["minimum_total_seconds"] = min(durations)
             record["maximum_total_seconds"] = max(durations)
             record["median_examples_per_second"] = statistics.median(throughputs)
+            record["median_end_to_end_seconds"] = statistics.median(end_to_end_durations)
+            record["minimum_end_to_end_seconds"] = min(end_to_end_durations)
+            record["maximum_end_to_end_seconds"] = max(end_to_end_durations)
+
+    for backend in {record["backend"] for record in summary_records}:
+        records = [record for record in summary_records if record["backend"] == backend]
+        peak_record = max(records, key=lambda record: record["median_examples_per_second"])
+        for record in records:
+            record["peak_batch_size"] = peak_record["batch_size"]
+            record["peak_median_examples_per_second"] = peak_record["median_examples_per_second"]
 
 
 def save_single_epoch_benchmark_plot(summary_records, plot_path):
@@ -74,9 +86,10 @@ def save_single_epoch_benchmark_plot(summary_records, plot_path):
         ("numpy", numpy_records, -bar_width / 2),
         ("cupy", cupy_records, bar_width / 2),
     ):
-        values = [backend_records[batch_size]["median_examples_per_second"] for batch_size in batch_sizes]
+        backend_batch_sizes = sorted(backend_records)
+        values = [backend_records[batch_size]["median_examples_per_second"] for batch_size in backend_batch_sizes]
         axes[0, 0].bar(
-            [position + offset for position in positions],
+            [batch_sizes.index(batch_size) + offset for batch_size in backend_batch_sizes],
             values,
             width=bar_width,
             color=colors[backend],
@@ -88,16 +101,18 @@ def save_single_epoch_benchmark_plot(summary_records, plot_path):
     axes[0, 0].set_xlabel("Batch size")
     axes[0, 0].legend(title="Backend")
 
+    matched_batch_sizes = sorted(set(numpy_records) & set(cupy_records))
     speedups = [
         cupy_records[batch_size]["median_examples_per_second"]
         / numpy_records[batch_size]["median_examples_per_second"]
-        for batch_size in batch_sizes
+        for batch_size in matched_batch_sizes
     ]
-    bars = axes[0, 1].bar(list(positions), speedups, color=colors["cupy"])
+    matched_positions = [batch_sizes.index(batch_size) for batch_size in matched_batch_sizes]
+    bars = axes[0, 1].bar(matched_positions, speedups, color=colors["cupy"])
     axes[0, 1].axhline(1, color="black", linewidth=1)
     axes[0, 1].set_title("CuPy speedup over NumPy")
     axes[0, 1].set_ylabel("Times faster")
-    axes[0, 1].set_xticks(list(positions), batch_sizes)
+    axes[0, 1].set_xticks(matched_positions, matched_batch_sizes)
     axes[0, 1].set_xlabel("Batch size")
     for bar, speedup in zip(bars, speedups):
         axes[0, 1].text(
@@ -112,11 +127,12 @@ def save_single_epoch_benchmark_plot(summary_records, plot_path):
         ("numpy", numpy_records, -bar_width / 2),
         ("cupy", cupy_records, bar_width / 2),
     ):
-        durations = [backend_records[batch_size]["median_total_seconds"] for batch_size in batch_sizes]
-        minimums = [backend_records[batch_size]["minimum_total_seconds"] for batch_size in batch_sizes]
-        maximums = [backend_records[batch_size]["maximum_total_seconds"] for batch_size in batch_sizes]
+        backend_batch_sizes = sorted(backend_records)
+        durations = [backend_records[batch_size]["median_total_seconds"] for batch_size in backend_batch_sizes]
+        minimums = [backend_records[batch_size]["minimum_total_seconds"] for batch_size in backend_batch_sizes]
+        maximums = [backend_records[batch_size]["maximum_total_seconds"] for batch_size in backend_batch_sizes]
         axes[1, 0].bar(
-            [position + offset for position in positions],
+            [batch_sizes.index(batch_size) + offset for batch_size in backend_batch_sizes],
             durations,
             width=bar_width,
             color=colors[backend],
@@ -127,7 +143,7 @@ def save_single_epoch_benchmark_plot(summary_records, plot_path):
             capsize=3,
             label=backend,
         )
-    axes[1, 0].set_title("Median epoch time with run range")
+    axes[1, 0].set_title("Median warmed run time with range")
     axes[1, 0].set_ylabel("Seconds")
     axes[1, 0].set_xticks(list(positions), batch_sizes)
     axes[1, 0].set_xlabel("Batch size")
@@ -137,9 +153,10 @@ def save_single_epoch_benchmark_plot(summary_records, plot_path):
         ("numpy", numpy_records, -bar_width / 2),
         ("cupy", cupy_records, bar_width / 2),
     ):
-        accuracies = [backend_records[batch_size]["test_accuracy"] for batch_size in batch_sizes]
+        backend_batch_sizes = sorted(backend_records)
+        accuracies = [backend_records[batch_size]["test_accuracy"] for batch_size in backend_batch_sizes]
         axes[1, 1].bar(
-            [position + offset for position in positions],
+            [batch_sizes.index(batch_size) + offset for batch_size in backend_batch_sizes],
             accuracies,
             width=bar_width,
             color=colors[backend],
@@ -361,32 +378,40 @@ def run_batch_benchmark(args, data, structure, train_inputs, train_outputs, test
         f"Train examples: {len(benchmark_train_inputs)}, Test examples: {len(benchmark_test_inputs)}"
     )
     print(
-        "backend,batch_size,run,updates,total_seconds,seconds_per_epoch,examples_per_second,"
+        "backend,batch_size,run,updates,total_seconds,end_to_end_seconds,seconds_per_epoch,examples_per_second,"
         "train_average_cost,test_accuracy,test_average_cost,wrong"
     )
     summary_records = []
     history_records = []
 
     for backend in args.backends:
-        xp = get_backend(backend)
-        backend_train_inputs = xp.asarray(benchmark_train_inputs, dtype=xp.float32)
-        backend_train_outputs = xp.asarray(benchmark_train_outputs, dtype=xp.float32)
-        backend_test_inputs = xp.asarray(benchmark_test_inputs, dtype=xp.float32)
-        backend_test_outputs = xp.asarray(benchmark_test_outputs, dtype=xp.float32)
-        backend_test_y = xp.asarray(benchmark_test_y)
+        if backend == "numpy" and args.cpu_batch_sizes is not None:
+            batch_sizes = args.cpu_batch_sizes
+        elif backend == "cupy" and args.gpu_batch_sizes is not None:
+            batch_sizes = args.gpu_batch_sizes
+        else:
+            batch_sizes = args.batch_sizes
 
-        for batch_size in args.batch_sizes:
+        for batch_size in batch_sizes:
             for run in range(1, args.benchmark_runs + 1):
-                if backend == "cupy":
-                    for _ in range(args.benchmark_warmup_batches):
-                        warm_up_network(
-                            Network(copy.deepcopy(data), structure, backend),
-                            backend_train_inputs,
-                            backend_train_outputs,
-                            batch_size,
-                        )
+                xp = get_backend(backend)
+                backend_train_inputs = xp.asarray(benchmark_train_inputs, dtype=xp.float32)
+                backend_train_outputs = xp.asarray(benchmark_train_outputs, dtype=xp.float32)
+                for _ in range(args.benchmark_warmup_batches):
+                    warm_up_network(
+                        Network(copy.deepcopy(data), structure, backend),
+                        backend_train_inputs,
+                        backend_train_outputs,
+                        batch_size,
+                    )
 
+                end_to_end_started_at = time.perf_counter()
                 network = Network(copy.deepcopy(data), structure, backend)
+                backend_train_inputs = xp.asarray(benchmark_train_inputs, dtype=xp.float32)
+                backend_train_outputs = xp.asarray(benchmark_train_outputs, dtype=xp.float32)
+                backend_test_inputs = xp.asarray(benchmark_test_inputs, dtype=xp.float32)
+                backend_test_outputs = xp.asarray(benchmark_test_outputs, dtype=xp.float32)
+                backend_test_y = xp.asarray(benchmark_test_y)
                 stats = train_network(
                     network,
                     backend_train_inputs,
@@ -404,6 +429,7 @@ def run_batch_benchmark(args, data, structure, train_inputs, train_outputs, test
                     backend_test_outputs,
                     backend_test_y,
                 )
+                end_to_end_seconds = time.perf_counter() - end_to_end_started_at
                 examples_seen = len(benchmark_train_inputs) * args.epochs
                 examples_per_second = examples_seen / stats["total_seconds"]
                 seconds_per_epoch = stats["total_seconds"] / args.epochs
@@ -420,6 +446,7 @@ def run_batch_benchmark(args, data, structure, train_inputs, train_outputs, test
                     "test_examples": len(benchmark_test_inputs),
                     "updates": stats["updates"],
                     "total_seconds": stats["total_seconds"],
+                    "end_to_end_seconds": end_to_end_seconds,
                     "seconds_per_epoch": seconds_per_epoch,
                     "examples_per_second": examples_per_second,
                     "train_average_cost": train_average_cost,
@@ -459,6 +486,7 @@ def run_batch_benchmark(args, data, structure, train_inputs, train_outputs, test
                     f"{run},"
                     f"{stats['updates']},"
                     f"{stats['total_seconds']:.4f},"
+                    f"{end_to_end_seconds:.4f},"
                     f"{seconds_per_epoch:.4f},"
                     f"{examples_per_second:.2f},"
                     f"{train_average_cost:.6f},"

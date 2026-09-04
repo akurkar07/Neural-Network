@@ -52,6 +52,14 @@ def parse_args():
         default="1,8,16,32,64,128,256",
         help="Comma-separated batch sizes to compare with --benchmark-batches.",
     )
+    parser.add_argument(
+        "--cpu-batch-sizes",
+        help="Optional comma-separated NumPy batch sizes for an independent CPU peak sweep.",
+    )
+    parser.add_argument(
+        "--gpu-batch-sizes",
+        help="Optional comma-separated CuPy batch sizes for an independent GPU peak sweep.",
+    )
     parser.add_argument("--benchmark-train-limit", type=int, help="Limit benchmark training to the first N examples.")
     parser.add_argument("--benchmark-test-limit", type=int, help="Limit benchmark evaluation to the first N examples.")
     parser.add_argument(
@@ -64,7 +72,7 @@ def parse_args():
         "--benchmark-warmup-batches",
         type=int,
         default=1,
-        help="Unrecorded warm-up batches before each CuPy run. Defaults to 1.",
+        help="Unrecorded warm-up batches before every recorded run. Defaults to 1.",
     )
     parser.add_argument(
         "--benchmark-output",
@@ -100,13 +108,9 @@ def validate_args(parser, args):
     if args.batch_size <= 0:
         parser.error("--batch-size must be greater than 0.")
 
-    try:
-        args.batch_sizes = [int(size.strip()) for size in args.batch_sizes.split(",") if size.strip()]
-    except ValueError:
-        parser.error("--batch-sizes must be a comma-separated list of integers.")
-
-    if not args.batch_sizes or any(size <= 0 for size in args.batch_sizes):
-        parser.error("--batch-sizes must contain at least one positive integer.")
+    args.batch_sizes = parse_batch_sizes(parser, args.batch_sizes, "--batch-sizes")
+    args.cpu_batch_sizes = parse_batch_sizes(parser, args.cpu_batch_sizes, "--cpu-batch-sizes")
+    args.gpu_batch_sizes = parse_batch_sizes(parser, args.gpu_batch_sizes, "--gpu-batch-sizes")
 
     args.backends = [backend.strip() for backend in args.backends.split(",") if backend.strip()]
     valid_backends = {"numpy", "cupy"}
@@ -129,6 +133,20 @@ def validate_args(parser, args):
 
     if args.benchmark_warmup_batches < 0:
         parser.error("--benchmark-warmup-batches cannot be negative.")
+
+
+def parse_batch_sizes(parser, value, option):
+    """Parses an optional comma-separated list of positive batch sizes."""
+    if value is None:
+        return None
+    try:
+        batch_sizes = [int(size.strip()) for size in value.split(",") if size.strip()]
+    except ValueError:
+        parser.error(f"{option} must be a comma-separated list of integers.")
+
+    if not batch_sizes or any(size <= 0 for size in batch_sizes):
+        parser.error(f"{option} must contain at least one positive integer.")
+    return batch_sizes
 
 
 def train(args, data, network, train_inputs, train_outputs, test_inputs, test_outputs, test_y):
