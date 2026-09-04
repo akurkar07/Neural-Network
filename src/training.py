@@ -32,19 +32,29 @@ def save_metric_plot(values, plot_path, y_label):
     plt.close()
 
 
+def synchronize_backend(network):
+    """Waits for queued GPU work before reading a timer or scalar result."""
+    if network.backend == "cupy":
+        network.xp.cuda.Stream.null.synchronize()
+
+
 def evaluate_network(network, test_inputs, test_outputs, test_y, verbose=False):
     """Tests the network and returns accuracy, wrong count, and average cost."""
-    total_cost = 0
-    wrong = 0
+    xp = network.xp
+    test_inputs = xp.asarray(test_inputs)
+    test_outputs = xp.asarray(test_outputs)
+    test_y = xp.asarray(test_y)
+    total_cost = xp.array(0.0)
+    wrong = xp.array(0)
 
     if verbose:
         for count, normalised_input in enumerate(test_inputs):
             desired = test_outputs[count]
             answer = network.forwardPass(normalised_input)
-            prediction = int(np.argmax(answer))
+            prediction = int(xp.argmax(answer))
             if prediction != test_y[count]:
                 wrong += 1
-            example_cost = cost(desired, answer)
+            example_cost = cost(desired, answer, xp)
             total_cost += example_cost
             print(
                 f"Given an image, NN returned {prediction}. "
@@ -54,12 +64,15 @@ def evaluate_network(network, test_inputs, test_outputs, test_y, verbose=False):
         evaluation_batch_size = 512
         for start, batch_inputs, batch_outputs in iter_batches(test_inputs, test_outputs, evaluation_batch_size):
             answers = network.forwardBatch(batch_inputs)
-            predictions = np.argmax(answers, axis=1)
+            predictions = xp.argmax(answers, axis=1)
             batch_labels = test_y[start:start + len(predictions)]
-            wrong += int(np.count_nonzero(predictions != batch_labels))
-            total_cost += cost(batch_outputs, answers)
+            wrong += xp.count_nonzero(predictions != batch_labels)
+            total_cost += cost(batch_outputs, answers, xp)
 
     no_of_examples = len(test_inputs)
+    synchronize_backend(network)
+    wrong = int(wrong)
+    total_cost = float(total_cost)
     correct = no_of_examples - wrong
     accuracy = correct * 100 / no_of_examples
     average_cost = total_cost / no_of_examples
@@ -79,6 +92,9 @@ def train_network(
     test_y=None,
 ):
     """Trains a network and returns timing and cost statistics."""
+    xp = network.xp
+    train_inputs = xp.asarray(train_inputs)
+    train_outputs = xp.asarray(train_outputs)
     lowest_cost = float("inf")
     average_costs = []
     accuracies = []
@@ -86,21 +102,24 @@ def train_network(
     wrong_counts = []
     epoch_seconds = []
     updates = 0
+    synchronize_backend(network)
     started_at = time.perf_counter()
 
     for epoch in range(epochs):
         epoch_started_at = time.perf_counter()
-        total_cost = 0
+        total_cost = xp.array(0.0)
 
         for start, batch_inputs, batch_outputs in iter_batches(train_inputs, train_outputs, batch_size):
             if progress and start % 10000 == 0:
                 print(f"Training example {start}")
 
             outputs = network.forwardBatch(batch_inputs)
-            total_cost += cost(outputs, batch_outputs)
+            total_cost += cost(outputs, batch_outputs, xp)
             network.backwardBatch(batch_outputs, learning_rate)
             updates += 1
 
+        synchronize_backend(network)
+        total_cost = float(total_cost)
         average_cost = total_cost / len(train_inputs)
         average_costs.append(float(average_cost))
         lowest_cost = min(total_cost, lowest_cost)

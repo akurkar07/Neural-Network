@@ -22,6 +22,17 @@ def parse_args():
     )
     parser.add_argument("--verbose", action="store_true", help="Print model details and each test prediction/cost.")
     parser.add_argument("--show-tf-logs", action="store_true", help="Show TensorFlow startup logs.")
+    parser.add_argument(
+        "--backend",
+        choices=("numpy", "cupy"),
+        default="numpy",
+        help="Array backend for --train or --test. Defaults to numpy.",
+    )
+    parser.add_argument(
+        "--backends",
+        default="numpy",
+        help="Comma-separated backends for --benchmark-batches, for example numpy,cupy.",
+    )
     parser.add_argument("--model", default="data.json", help="Model file to load and save. Defaults to data.json.")
     parser.add_argument("--epochs", type=int, default=30, help="Number of training epochs. Defaults to 30.")
     parser.add_argument("--learning-rate", type=float, default=0.1, help="Training learning rate. Defaults to 0.1.")
@@ -79,6 +90,11 @@ def validate_args(parser, args):
 
     if not args.batch_sizes or any(size <= 0 for size in args.batch_sizes):
         parser.error("--batch-sizes must contain at least one positive integer.")
+
+    args.backends = [backend.strip() for backend in args.backends.split(",") if backend.strip()]
+    valid_backends = {"numpy", "cupy"}
+    if not args.backends or any(backend not in valid_backends for backend in args.backends):
+        parser.error("--backends must contain one or more of: numpy, cupy.")
 
     if args.benchmark_train_limit is not None and args.benchmark_train_limit <= 0:
         parser.error("--benchmark-train-limit must be greater than 0.")
@@ -150,7 +166,7 @@ def main():
             "structure. Run src/randomiser.py to regenerate the model."
         )
 
-    network = Network(data, STRUCTURE)
+    network = Network(data, STRUCTURE, args.backend)
     if args.verbose:
         print(network)
 

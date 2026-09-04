@@ -29,6 +29,28 @@ That makes the project a good candidate for a GPU version with CuPy. In principl
 
 A GPU version should still be designed carefully around data movement. The important rule is to keep arrays on the GPU during training instead of repeatedly converting between NumPy arrays and CuPy arrays. The algorithm does not need to be redesigned around manual parallelism; the matrix operations already expose parallel work, and CuPy delegates that work to CUDA kernels. The main redesign is therefore an array-backend layer, for example choosing `numpy` or `cupy` as `xp`, plus explicit conversion when loading JSON, saving JSON, or interacting with TensorFlow/Keras data.
 
+## GPU Processing
+
+The network supports NumPy for CPU execution and CuPy for CUDA GPU execution. The full MNIST comparison produced identical training results, but NumPy was `3.9x` faster for the current small model. See the [CPU and GPU performance report](docs/gpu-performance-report.md) for the benchmark results, explanation, and steps toward a GPU advantage.
+
+Install a CuPy wheel matching the installed CUDA runtime. For current CUDA 12 systems:
+
+```powershell
+pip install -r requirements-gpu.txt
+```
+
+Run an individual GPU training or test job with `--backend cupy`:
+
+```powershell
+python src/main.py --train --backend cupy --model models/fresh.json --epochs 5 --batch-size 256
+```
+
+To reproduce the comparison:
+
+```powershell
+python src/main.py --benchmark-batches --backends numpy,cupy --epochs 5 --learning-rate 0.1 --batch-sizes 256 --benchmark-output outputs/numpy_vs_cupy_full_summary.csv --benchmark-history-output outputs/numpy_vs_cupy_full_history.csv --benchmark-plot docs/assets/numpy_vs_cupy_full_stats.png
+```
+
 ---
 
 ## Batch Processing
@@ -114,6 +136,8 @@ Useful flags:
 - `--test` - Evaluate a model against the MNIST test set
 - `--train` - Train a model and save updated weights/biases
 - `--benchmark-batches` - Compare training cost, timing, throughput, and test accuracy across batch sizes
+- `--backend BACKEND` - Use `numpy` (CPU, default) or `cupy` (CUDA GPU) for training or testing
+- `--backends LIST` - Comma-separated backends for `--benchmark-batches`, for example `numpy,cupy`
 - `--model PATH` - Load/save a specific model file
 - `--epochs N` - Number of training epochs
 - `--learning-rate VALUE` - Training learning rate

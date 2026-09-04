@@ -45,8 +45,12 @@ def load_model(model_path):
 
 def save_model(model_path, data, network):
     """Saves updated weights and biases back to a JSON model file."""
-    data["weights"] = [weights.tolist() for weights in network.weights]
-    data["biases"] = [biases.tolist() for biases in network.biases]
+    if network.backend == "cupy":
+        data["weights"] = [network.xp.asnumpy(weights).tolist() for weights in network.weights]
+        data["biases"] = [network.xp.asnumpy(biases).tolist() for biases in network.biases]
+    else:
+        data["weights"] = [weights.tolist() for weights in network.weights]
+        data["biases"] = [biases.tolist() for biases in network.biases]
     Path(model_path).parent.mkdir(parents=True, exist_ok=True)
     with open(model_path, "w") as file:
         json.dump(data, file, indent=4)
