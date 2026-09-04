@@ -6,7 +6,7 @@ This follow-up executes the plan in the [CPU and GPU performance report](gpu-per
 
 ## Configuration
 
-The benchmark used the full MNIST dataset for one epoch with a Xavier-initialized, seeded `[784, 512, 512, 10]` network. It ran on the same NVIDIA GeForce RTX 3060 and compared NumPy CPU execution with CuPy GPU execution from identical initial weights.
+The benchmark used the full MNIST dataset for one epoch with a Xavier-initialised, seeded `[784, 512, 512, 10]` network. It ran on the same NVIDIA GeForce RTX 3060 and compared NumPy CPU execution with CuPy GPU execution from identical initial weights.
 
 - Train examples: `60,000`
 - Test examples: `10,000`
@@ -60,7 +60,7 @@ For local language or image models, load the model once and send multiple reques
 The implementation now supports the conditions used in this experiment:
 
 - `--structure` configures MNIST-compatible layer sizes.
-- `randomiser.py` accepts `--seed` and defaults to Xavier initialization.
+- `randomiser.py` accepts `--seed` and defaults to Xavier initialisation.
 - Model parameters, MNIST inputs, targets, activations, and gradients use float32.
 - Benchmarks move each dataset to its selected backend once.
 - `--benchmark-runs` defaults to three and CuPy warm-up is controlled by `--benchmark-warmup-batches`.

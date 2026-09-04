@@ -39,7 +39,7 @@ def synchronize_backend(network):
 
 
 def warm_up_network(network, train_inputs, train_outputs, batch_size):
-    """Initializes backend libraries with an unrecorded training batch."""
+    """Initialises backend libraries with an unrecorded training batch."""
     warmup_size = min(batch_size, len(train_inputs))
     network.forwardBatch(train_inputs[:warmup_size])
     network.backwardBatch(train_outputs[:warmup_size], 0.0)

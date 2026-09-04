@@ -22,16 +22,16 @@ def parse_args():
     )
     parser.add_argument("--seed", type=int, help="Optional NumPy random seed for reproducible model weights.")
     parser.add_argument(
-        "--initialization",
+        "--initialisation",
         choices=("xavier", "normal"),
         default="xavier",
-        help="Weight initialization method. Defaults to xavier.",
+        help="Weight initialisation method. Defaults to xavier.",
     )
     return parser.parse_args()
 
-def randomise_model(structure, initialization="xavier"):
+def randomise_model(structure, initialisation="xavier"):
     """Creates random weights and biases for the given network structure."""
-    if initialization == "xavier":
+    if initialisation == "xavier":
         weights = [
             (np.random.randn(output_size, input_size) * np.sqrt(2 / (input_size + output_size))).tolist()
             for input_size, output_size in zip(structure[:-1], structure[1:])
@@ -73,7 +73,7 @@ def main():
     model_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(model_path, "w") as file:
-        json.dump(randomise_model(structure, args.initialization), file, indent=4)
+        json.dump(randomise_model(structure, args.initialisation), file, indent=4)
 
     print(f"Created random model: {model_path}")
 

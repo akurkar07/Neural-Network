@@ -29,7 +29,7 @@ At batch size `256`, the largest forward matrix multiplication is `16 x 784` by 
 
 The GPU has far greater parallel capacity, but it must launch separate kernels for matrix products, sigmoid operations, derivatives, reductions, and gradient updates. Each mini-batch therefore creates many short GPU operations. Kernel launch latency and synchronization cost more than the calculation saves when the matrices are this small.
 
-The per-epoch records also show a GPU warm-up effect. NumPy training stayed near `0.38s` per epoch. CuPy took `2.61s` in epoch one, then about `0.71s` per epoch. The first epoch includes CUDA library/context initialization; even after warm-up, the GPU's small-operation overhead remains larger than the CPU time.
+The per-epoch records also show a GPU warm-up effect. NumPy training stayed near `0.38s` per epoch. CuPy took `2.61s` in epoch one, then about `0.71s` per epoch. The first epoch includes CUDA library/context initialisation; even after warm-up, the GPU's small-operation overhead remains larger than the CPU time.
 
 The current full benchmark also evaluates the test set after every epoch. This creates additional GPU work and host-to-device data preparation in the measured total time. It is valid for an end-to-end comparison, but it is not a pure training-throughput measurement.
 
@@ -47,13 +47,13 @@ Make the architecture configurable and compare progressively larger hidden layer
 | Medium | `[784, 512, 512, 10]` | 669 thousand |
 | Large | `[784, 1024, 1024, 10]` | 1.85 million |
 
-The larger matrices will provide substantially more parallel work per batch. Use identical structures, initialization seeds, epochs, learning rates, and batch sizes for both backends.
+The larger matrices will provide substantially more parallel work per batch. Use identical structures, initialisation seeds, epochs, learning rates, and batch sizes for both backends.
 
 ### 2. Increase Batch Size
 
 Test `256`, `512`, `1024`, and `2048` examples per update, subject to GPU memory. Larger batches turn each matrix multiply into a wider operation and reduce the number of Python loop iterations and CUDA launches per epoch.
 
-Batch size also changes optimization behavior. Report accuracy and cost beside throughput rather than treating the fastest size as automatically best.
+Batch size also changes optimisation behaviour. Report accuracy and cost beside throughput rather than treating the fastest size as automatically best.
 
 ### 3. Use Float32 End to End
 
@@ -67,7 +67,7 @@ Transfer training and test datasets to the selected backend once before timing. 
 
 Report two metrics:
 
-- End-to-end time: includes dataset transfer, CUDA initialization, training, and evaluation.
+- End-to-end time: includes dataset transfer, CUDA initialisation, training, and evaluation.
 - Steady-state training time: excludes one-time setup and measures repeated training epochs after warm-up.
 
 Both metrics matter. End-to-end time answers whether a short one-off run benefits; steady-state time answers whether a long training job benefits.

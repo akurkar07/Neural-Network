@@ -51,7 +51,7 @@ To reproduce the comparison:
 python src/main.py --benchmark-batches --backends numpy,cupy --epochs 5 --learning-rate 0.1 --batch-sizes 256 --benchmark-output outputs/numpy_vs_cupy_full_summary.csv --benchmark-history-output outputs/numpy_vs_cupy_full_history.csv --benchmark-plot docs/assets/numpy_vs_cupy_full_stats.png
 ```
 
-To benchmark a wider model with warmed, repeated runs, first create a seeded Xavier-initialized model:
+To benchmark a wider model with warmed, repeated runs, first create a seeded Xavier-initialised model:
 
 ```powershell
 python src/randomiser.py models/medium.json --structure 784,512,512,10 --seed 42
