@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from benchmark import run_batch_benchmark
-from data import STRUCTURE, load_mnist_data, load_model, save_model, validate_model_data
+from data import STRUCTURE, load_mnist_data, load_model, parse_structure, save_model, validate_model_data
 from dependencies import Network
 from training import evaluate_network, save_metric_plot, train_network
 
@@ -33,6 +33,11 @@ def parse_args():
         default="numpy",
         help="Comma-separated backends for --benchmark-batches, for example numpy,cupy.",
     )
+    parser.add_argument(
+        "--structure",
+        default=",".join(map(str, STRUCTURE)),
+        help="Comma-separated layer sizes. MNIST models must start with 784 and end with 10.",
+    )
     parser.add_argument("--model", default="data.json", help="Model file to load and save. Defaults to data.json.")
     parser.add_argument("--epochs", type=int, default=30, help="Number of training epochs. Defaults to 30.")
     parser.add_argument("--learning-rate", type=float, default=0.1, help="Training learning rate. Defaults to 0.1.")
@@ -49,6 +54,18 @@ def parse_args():
     )
     parser.add_argument("--benchmark-train-limit", type=int, help="Limit benchmark training to the first N examples.")
     parser.add_argument("--benchmark-test-limit", type=int, help="Limit benchmark evaluation to the first N examples.")
+    parser.add_argument(
+        "--benchmark-runs",
+        type=int,
+        default=3,
+        help="Recorded runs per backend and batch size. Defaults to 3.",
+    )
+    parser.add_argument(
+        "--benchmark-warmup-batches",
+        type=int,
+        default=1,
+        help="Unrecorded warm-up batches before each CuPy run. Defaults to 1.",
+    )
     parser.add_argument(
         "--benchmark-output",
         default="outputs/batch_benchmark_summary.csv",
@@ -96,11 +113,22 @@ def validate_args(parser, args):
     if not args.backends or any(backend not in valid_backends for backend in args.backends):
         parser.error("--backends must contain one or more of: numpy, cupy.")
 
+    try:
+        args.structure = parse_structure(args.structure)
+    except ValueError as error:
+        parser.error(str(error))
+
     if args.benchmark_train_limit is not None and args.benchmark_train_limit <= 0:
         parser.error("--benchmark-train-limit must be greater than 0.")
 
     if args.benchmark_test_limit is not None and args.benchmark_test_limit <= 0:
         parser.error("--benchmark-test-limit must be greater than 0.")
+
+    if args.benchmark_runs <= 0:
+        parser.error("--benchmark-runs must be greater than 0.")
+
+    if args.benchmark_warmup_batches < 0:
+        parser.error("--benchmark-warmup-batches cannot be negative.")
 
 
 def train(args, data, network, train_inputs, train_outputs, test_inputs, test_outputs, test_y):
@@ -156,7 +184,7 @@ def main():
     data = load_model(model_path)
     train_inputs, train_outputs, test_inputs, test_outputs, test_y = load_mnist_data()
 
-    valid = validate_model_data(data, STRUCTURE)
+    valid = validate_model_data(data, args.structure)
     if args.verbose:
         print(f"Valid: {valid}")
 
@@ -166,14 +194,14 @@ def main():
             "structure. Run src/randomiser.py to regenerate the model."
         )
 
-    network = Network(data, STRUCTURE, args.backend)
+    network = Network(data, args.structure, args.backend)
     if args.verbose:
         print(network)
 
     if args.train:
         train(args, data, network, train_inputs, train_outputs, test_inputs, test_outputs, test_y)
     elif args.benchmark_batches:
-        run_batch_benchmark(args, data, STRUCTURE, train_inputs, train_outputs, test_inputs, test_outputs, test_y)
+        run_batch_benchmark(args, data, args.structure, train_inputs, train_outputs, test_inputs, test_outputs, test_y)
     else:
         test(args, network, test_inputs, test_outputs, test_y)
 

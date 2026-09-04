@@ -38,6 +38,14 @@ def synchronize_backend(network):
         network.xp.cuda.Stream.null.synchronize()
 
 
+def warm_up_network(network, train_inputs, train_outputs, batch_size):
+    """Initializes backend libraries with an unrecorded training batch."""
+    warmup_size = min(batch_size, len(train_inputs))
+    network.forwardBatch(train_inputs[:warmup_size])
+    network.backwardBatch(train_outputs[:warmup_size], 0.0)
+    synchronize_backend(network)
+
+
 def evaluate_network(network, test_inputs, test_outputs, test_y, verbose=False):
     """Tests the network and returns accuracy, wrong count, and average cost."""
     xp = network.xp

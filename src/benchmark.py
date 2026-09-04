@@ -1,9 +1,10 @@
 import copy
 import csv
+import statistics
 from pathlib import Path
 
-from dependencies import Network
-from training import evaluate_network, train_network
+from dependencies import Network, get_backend
+from training import evaluate_network, train_network, warm_up_network
 
 
 def save_benchmark_records(summary_records, history_records, summary_path, history_path):
@@ -24,6 +25,24 @@ def save_benchmark_records(summary_records, history_records, summary_path, histo
         writer.writerows(history_records)
 
 
+def add_summary_statistics(summary_records):
+    """Adds median and range values for each backend and batch-size configuration."""
+    configurations = {(record["backend"], record["batch_size"]) for record in summary_records}
+    for backend, batch_size in configurations:
+        records = [
+            record
+            for record in summary_records
+            if record["backend"] == backend and record["batch_size"] == batch_size
+        ]
+        durations = [record["total_seconds"] for record in records]
+        throughputs = [record["examples_per_second"] for record in records]
+        for record in records:
+            record["median_total_seconds"] = statistics.median(durations)
+            record["minimum_total_seconds"] = min(durations)
+            record["maximum_total_seconds"] = max(durations)
+            record["median_examples_per_second"] = statistics.median(throughputs)
+
+
 def save_benchmark_plot(summary_records, history_records, plot_path):
     """Saves comparison graphs for benchmark records."""
     import matplotlib
@@ -34,18 +53,18 @@ def save_benchmark_plot(summary_records, history_records, plot_path):
     plot_path = Path(plot_path)
     plot_path.parent.mkdir(parents=True, exist_ok=True)
 
-    configurations = sorted({(record["backend"], record["batch_size"]) for record in history_records})
+    configurations = sorted({(record["backend"], record["batch_size"], record["run"]) for record in history_records})
     fig, axes = plt.subplots(2, 3, figsize=(16, 9))
     fig.suptitle("Training backend and batch size benchmark")
 
-    for backend, batch_size in configurations:
+    for backend, batch_size, run in configurations:
         records = [
             record
             for record in history_records
-            if record["backend"] == backend and record["batch_size"] == batch_size
+            if record["backend"] == backend and record["batch_size"] == batch_size and record["run"] == run
         ]
         epochs = [record["epoch"] for record in records]
-        label = f"{backend}, batch {batch_size}"
+        label = f"{backend}, batch {batch_size}, run {run}"
 
         axes[0, 0].plot(epochs, [record["train_average_cost"] for record in records], marker="o", label=label)
         axes[0, 0].plot(
@@ -160,92 +179,113 @@ def run_batch_benchmark(args, data, structure, train_inputs, train_outputs, test
         f"Train examples: {len(benchmark_train_inputs)}, Test examples: {len(benchmark_test_inputs)}"
     )
     print(
-        "backend,batch_size,updates,total_seconds,seconds_per_epoch,examples_per_second,"
+        "backend,batch_size,run,updates,total_seconds,seconds_per_epoch,examples_per_second,"
         "train_average_cost,test_accuracy,test_average_cost,wrong"
     )
     summary_records = []
     history_records = []
 
     for backend in args.backends:
+        xp = get_backend(backend)
+        backend_train_inputs = xp.asarray(benchmark_train_inputs, dtype=xp.float32)
+        backend_train_outputs = xp.asarray(benchmark_train_outputs, dtype=xp.float32)
+        backend_test_inputs = xp.asarray(benchmark_test_inputs, dtype=xp.float32)
+        backend_test_outputs = xp.asarray(benchmark_test_outputs, dtype=xp.float32)
+        backend_test_y = xp.asarray(benchmark_test_y)
+
         for batch_size in args.batch_sizes:
-            network = Network(copy.deepcopy(data), structure, backend)
-            stats = train_network(
-                network,
-                benchmark_train_inputs,
-                benchmark_train_outputs,
-                args.epochs,
-                args.learning_rate,
-                batch_size,
-                test_inputs=benchmark_test_inputs,
-                test_outputs=benchmark_test_outputs,
-                test_y=benchmark_test_y,
-            )
-            accuracy, wrong, test_average_cost = evaluate_network(
-                network,
-                benchmark_test_inputs,
-                benchmark_test_outputs,
-                benchmark_test_y,
-            )
-            examples_seen = len(benchmark_train_inputs) * args.epochs
-            examples_per_second = examples_seen / stats["total_seconds"]
-            seconds_per_epoch = stats["total_seconds"] / args.epochs
-            train_average_cost = stats["average_costs"][-1]
+            for run in range(1, args.benchmark_runs + 1):
+                if backend == "cupy":
+                    for _ in range(args.benchmark_warmup_batches):
+                        warm_up_network(
+                            Network(copy.deepcopy(data), structure, backend),
+                            backend_train_inputs,
+                            backend_train_outputs,
+                            batch_size,
+                        )
 
-            summary_record = {
-                "backend": backend,
-                "batch_size": batch_size,
-                "epochs": args.epochs,
-                "learning_rate": args.learning_rate,
-                "model": args.model,
-                "train_examples": len(benchmark_train_inputs),
-                "test_examples": len(benchmark_test_inputs),
-                "updates": stats["updates"],
-                "total_seconds": stats["total_seconds"],
-                "seconds_per_epoch": seconds_per_epoch,
-                "examples_per_second": examples_per_second,
-                "train_average_cost": train_average_cost,
-                "test_accuracy": accuracy,
-                "test_average_cost": float(test_average_cost),
-                "wrong": wrong,
-            }
-            summary_records.append(summary_record)
+                network = Network(copy.deepcopy(data), structure, backend)
+                stats = train_network(
+                    network,
+                    backend_train_inputs,
+                    backend_train_outputs,
+                    args.epochs,
+                    args.learning_rate,
+                    batch_size,
+                    test_inputs=backend_test_inputs,
+                    test_outputs=backend_test_outputs,
+                    test_y=backend_test_y,
+                )
+                accuracy, wrong, test_average_cost = evaluate_network(
+                    network,
+                    backend_test_inputs,
+                    backend_test_outputs,
+                    backend_test_y,
+                )
+                examples_seen = len(benchmark_train_inputs) * args.epochs
+                examples_per_second = examples_seen / stats["total_seconds"]
+                seconds_per_epoch = stats["total_seconds"] / args.epochs
+                train_average_cost = stats["average_costs"][-1]
 
-            for epoch, (train_cost, epoch_seconds, epoch_accuracy, epoch_test_cost, epoch_wrong) in enumerate(
-                zip(
-                    stats["average_costs"],
-                    stats["epoch_seconds"],
-                    stats["accuracies"],
-                    stats["test_average_costs"],
-                    stats["wrong_counts"],
-                ),
-                start=1,
-            ):
-                history_records.append(
-                    {
-                        "backend": backend,
-                        "batch_size": batch_size,
-                        "epoch": epoch,
-                        "train_average_cost": train_cost,
-                        "test_accuracy": epoch_accuracy,
-                        "test_average_cost": epoch_test_cost,
-                        "wrong": epoch_wrong,
-                        "epoch_seconds": epoch_seconds,
-                    }
+                summary_record = {
+                    "backend": backend,
+                    "batch_size": batch_size,
+                    "run": run,
+                    "epochs": args.epochs,
+                    "learning_rate": args.learning_rate,
+                    "model": args.model,
+                    "train_examples": len(benchmark_train_inputs),
+                    "test_examples": len(benchmark_test_inputs),
+                    "updates": stats["updates"],
+                    "total_seconds": stats["total_seconds"],
+                    "seconds_per_epoch": seconds_per_epoch,
+                    "examples_per_second": examples_per_second,
+                    "train_average_cost": train_average_cost,
+                    "test_accuracy": accuracy,
+                    "test_average_cost": float(test_average_cost),
+                    "wrong": wrong,
+                }
+                summary_records.append(summary_record)
+
+                for epoch, (train_cost, epoch_seconds, epoch_accuracy, epoch_test_cost, epoch_wrong) in enumerate(
+                    zip(
+                        stats["average_costs"],
+                        stats["epoch_seconds"],
+                        stats["accuracies"],
+                        stats["test_average_costs"],
+                        stats["wrong_counts"],
+                    ),
+                    start=1,
+                ):
+                    history_records.append(
+                        {
+                            "backend": backend,
+                            "batch_size": batch_size,
+                            "run": run,
+                            "epoch": epoch,
+                            "train_average_cost": train_cost,
+                            "test_accuracy": epoch_accuracy,
+                            "test_average_cost": epoch_test_cost,
+                            "wrong": epoch_wrong,
+                            "epoch_seconds": epoch_seconds,
+                        }
+                    )
+
+                print(
+                    f"{backend},"
+                    f"{batch_size},"
+                    f"{run},"
+                    f"{stats['updates']},"
+                    f"{stats['total_seconds']:.4f},"
+                    f"{seconds_per_epoch:.4f},"
+                    f"{examples_per_second:.2f},"
+                    f"{train_average_cost:.6f},"
+                    f"{accuracy:.2f},"
+                    f"{test_average_cost:.6f},"
+                    f"{wrong}"
                 )
 
-            print(
-                f"{backend},"
-                f"{batch_size},"
-                f"{stats['updates']},"
-                f"{stats['total_seconds']:.4f},"
-                f"{seconds_per_epoch:.4f},"
-                f"{examples_per_second:.2f},"
-                f"{train_average_cost:.6f},"
-                f"{accuracy:.2f},"
-                f"{test_average_cost:.6f},"
-                f"{wrong}"
-            )
-
+    add_summary_statistics(summary_records)
     save_benchmark_records(summary_records, history_records, args.benchmark_output, args.benchmark_history_output)
     save_benchmark_plot(summary_records, history_records, args.benchmark_plot)
     print(f"Saved benchmark summary: {args.benchmark_output}")

@@ -51,6 +51,13 @@ To reproduce the comparison:
 python src/main.py --benchmark-batches --backends numpy,cupy --epochs 5 --learning-rate 0.1 --batch-sizes 256 --benchmark-output outputs/numpy_vs_cupy_full_summary.csv --benchmark-history-output outputs/numpy_vs_cupy_full_history.csv --benchmark-plot docs/assets/numpy_vs_cupy_full_stats.png
 ```
 
+To benchmark a wider model with warmed, repeated runs, first create a seeded Xavier-initialized model:
+
+```powershell
+python src/randomiser.py models/medium.json --structure 784,512,512,10 --seed 42
+python src/main.py --benchmark-batches --model models/medium.json --structure 784,512,512,10 --backends numpy,cupy --batch-sizes 256,1024,2048 --epochs 1 --benchmark-runs 3
+```
+
 ---
 
 ## Batch Processing
@@ -138,6 +145,7 @@ Useful flags:
 - `--benchmark-batches` - Compare training cost, timing, throughput, and test accuracy across batch sizes
 - `--backend BACKEND` - Use `numpy` (CPU, default) or `cupy` (CUDA GPU) for training or testing
 - `--backends LIST` - Comma-separated backends for `--benchmark-batches`, for example `numpy,cupy`
+- `--structure LAYERS` - Comma-separated MNIST layer sizes, for example `784,512,512,10`
 - `--model PATH` - Load/save a specific model file
 - `--epochs N` - Number of training epochs
 - `--learning-rate VALUE` - Training learning rate
@@ -145,6 +153,8 @@ Useful flags:
 - `--batch-sizes LIST` - Comma-separated batch sizes for benchmarking, for example `1,8,32,128`
 - `--benchmark-train-limit N` - Limit benchmark training examples for quicker comparisons
 - `--benchmark-test-limit N` - Limit benchmark test examples for quicker comparisons
+- `--benchmark-runs N` - Recorded runs per backend and batch size; defaults to 3
+- `--benchmark-warmup-batches N` - Unrecorded CuPy warm-up batches before each run; defaults to 1
 - `--benchmark-output PATH` - Save benchmark summary stats as CSV
 - `--benchmark-history-output PATH` - Save per-epoch benchmark stats as CSV
 - `--benchmark-plot PATH` - Save benchmark comparison graphs

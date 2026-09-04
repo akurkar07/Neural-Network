@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from data import STRUCTURE
+from data import STRUCTURE, parse_structure
 
 def parse_args():
     """Reads command line arguments and returns the model output settings."""
@@ -15,14 +15,34 @@ def parse_args():
         action="store_true",
         help="Allow overwriting an existing model file after confirmation.",
     )
+    parser.add_argument(
+        "--structure",
+        default=",".join(map(str, STRUCTURE)),
+        help="Comma-separated layer sizes. MNIST models must start with 784 and end with 10.",
+    )
+    parser.add_argument("--seed", type=int, help="Optional NumPy random seed for reproducible model weights.")
+    parser.add_argument(
+        "--initialization",
+        choices=("xavier", "normal"),
+        default="xavier",
+        help="Weight initialization method. Defaults to xavier.",
+    )
     return parser.parse_args()
 
-def randomise_model(structure):
+def randomise_model(structure, initialization="xavier"):
     """Creates random weights and biases for the given network structure."""
+    if initialization == "xavier":
+        weights = [
+            (np.random.randn(output_size, input_size) * np.sqrt(2 / (input_size + output_size))).tolist()
+            for input_size, output_size in zip(structure[:-1], structure[1:])
+        ]
+    else:
+        weights = [np.random.randn(output_size, input_size).tolist() for input_size, output_size in zip(structure[:-1], structure[1:])]
+
     return {
-        "weights": [np.random.randn(y, x).tolist() for x, y in zip(structure[:-1], structure[1:])],
+        "weights": weights,
         # Biases are stored as column vectors to match the matrix-based network shape.
-        "biases": [np.random.randn(y, 1).tolist() for y in structure[1:]],
+        "biases": [np.zeros((size, 1)).tolist() for size in structure[1:]],
     }
 
 def confirm_overwrite(model_path):
@@ -35,6 +55,14 @@ def main():
     args = parse_args()
     model_path = Path(args.model)
 
+    try:
+        structure = parse_structure(args.structure)
+    except ValueError as error:
+        raise SystemExit(f"Error: {error}") from error
+
+    if args.seed is not None:
+        np.random.seed(args.seed)
+
     if model_path.exists():
         if not args.force:
             raise SystemExit(f"Error: '{model_path}' already exists. Use --force to overwrite it.")
@@ -45,7 +73,7 @@ def main():
     model_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(model_path, "w") as file:
-        json.dump(randomise_model(STRUCTURE), file, indent=4)
+        json.dump(randomise_model(structure, args.initialization), file, indent=4)
 
     print(f"Created random model: {model_path}")
 
