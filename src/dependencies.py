@@ -29,13 +29,6 @@ def cost(y, i, xp=np):
     "Returns the sum of the squares of the differences between output from forward pass (y) and target (i)"
     return xp.sum((y-i)**2)
 
-def numToList(input:int) -> np.ndarray:
-    """turns a desired numerical output into an output list to be used to calculate a cost\n
-    eg. 7 -> [0,0,0,0,0,0,0,1,0,0,0]"""
-    out = np.array([0]*10)
-    out[input] = 1
-    return out
-
 class Network:
     """Represents a fully connected feedforward neural network."""
     def __init__(self, data, structure: list, backend="numpy") -> None:

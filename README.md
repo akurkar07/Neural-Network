@@ -17,21 +17,9 @@ I built this as a learning tool to understand matrix-based gradient descent from
 
 ---
 
-## Design Notes
-
-The core network is intentionally written around arrays and matrix operations:
-
-- each layer stores a weight matrix and bias vector
-- forward propagation uses `weights @ activation + bias`
-- backpropagation uses matrix products, transposes, element-wise sigmoid derivatives, and gradient updates
-
-That makes the project a good candidate for a GPU version with CuPy. In principle, most NumPy calls in the core math can be swapped for CuPy equivalents because CuPy mirrors much of the NumPy API and runs those array operations on the GPU.
-
-A GPU version should still be designed carefully around data movement. The important rule is to keep arrays on the GPU during training instead of repeatedly converting between NumPy arrays and CuPy arrays. The algorithm does not need to be redesigned around manual parallelism; the matrix operations already expose parallel work, and CuPy delegates that work to CUDA kernels. The main redesign is therefore an array-backend layer, for example choosing `numpy` or `cupy` as `xp`, plus explicit conversion when loading JSON, saving JSON, or interacting with TensorFlow/Keras data.
-
 ## GPU Processing
 
-The network supports NumPy for CPU execution and CuPy for CUDA GPU execution. The full MNIST comparison produced identical training results, but NumPy was `3.9x` faster for the current small model. See the [CPU and GPU performance report](docs/gpu-performance-report.md), [medium-model GPU follow-up](docs/gpu-medium-model-follow-up.md), and [benchmark methodology](docs/benchmark-methodology.md) for results, hardware tradeoffs, and fair comparison guidance.
+The network supports NumPy for CPU execution and CuPy for CUDA GPU execution. Install the GPU requirements only when using the CuPy backend.
 
 Install a CuPy wheel matching the installed CUDA runtime. For current CUDA 12 systems:
 
@@ -45,39 +33,18 @@ Run an individual GPU training or test job with `--backend cupy`:
 python src/main.py --train --backend cupy --model models/fresh.json --epochs 5 --batch-size 256
 ```
 
-To reproduce the comparison:
+Benchmark CPU and GPU backends with the same model and settings:
 
 ```powershell
 python src/main.py --benchmark-batches --backends numpy,cupy --epochs 5 --learning-rate 0.1 --batch-sizes 256 --benchmark-output outputs/numpy_vs_cupy_full_summary.csv --benchmark-history-output outputs/numpy_vs_cupy_full_history.csv --benchmark-plot docs/assets/numpy_vs_cupy_full_stats.png
 ```
 
-To benchmark a wider model with warmed, repeated runs, first create a seeded Xavier-initialised model:
+Create a configurable, seeded model:
 
 ```powershell
 python src/randomiser.py models/medium.json --structure 784,512,512,10 --seed 42
-python src/main.py --benchmark-batches --model models/medium.json --structure 784,512,512,10 --backends numpy,cupy --batch-sizes 256,1024,2048 --epochs 1 --benchmark-runs 3
+python src/main.py --train --model models/medium.json --structure 784,512,512,10 --backend cupy --epochs 5 --batch-size 256
 ```
-
----
-
-## Batch Processing
-
-The original training loop updated the model after every image. With per-image processing, one MNIST example is reshaped into a column vector, passed through the network, backpropagated, and immediately used to update the weights.
-
-Mini-batch processing groups multiple images into one matrix. For example, batch size `16` turns sixteen `(784,)` inputs into a single `(784, 16)` activation matrix internally. The same matrix-based forward and backward equations still apply, but each update uses the average gradient from sixteen examples instead of one example.
-
-This matters because the expensive work is matrix multiplication. Doing more examples per matrix operation reduces Python loop overhead and gives NumPy larger, more efficient array operations to run. It also matches the shape of the later GPU/CuPy version: fewer, larger matrix operations are much better for GPU acceleration than many tiny per-image operations.
-
-Full MNIST benchmark, using `60,000` training examples, `10,000` test examples, 5 epochs, and learning rate `0.1`:
-
-![Batch size benchmark comparing per-image processing with batch size 16](docs/assets/batch_1_vs_16_full_stats.png)
-
-| Batch size | Processing style | Weight updates | Total time | Examples/sec | Test accuracy |
-|---:|---|---:|---:|---:|---:|
-| 1 | per-image update | 300,000 | 83.96s | 3,573.20 | 92.59% |
-| 16 | mini-batch update | 18,750 | 5.68s | 52,850.24 | 92.40% |
-
-Batch size `16` was about `14.8x` faster in this run while keeping almost the same accuracy. The per-image version made more frequent updates and ended slightly higher on accuracy, but it took far longer. The mini-batch version is usually the better trade-off when the goal is efficient training, especially as the project moves toward a GPU backend.
 
 ---
 
@@ -202,3 +169,18 @@ python src/randomiser.py models/fresh.json --force
 ```
 
 The scripts download MNIST through TensorFlow/Keras if needed. TensorFlow startup logs are hidden by default during `main.py` runs.
+
+## Verification
+
+Run the regression suite, including CPU/GPU output parity when CuPy is installed:
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+## Analysis and Results
+
+- [Batch processing analysis](docs/analysis/batch-processing.md)
+- [CPU and GPU performance report](docs/analysis/gpu-performance-report.md)
+- [Medium-model GPU follow-up](docs/analysis/gpu-medium-model-follow-up.md)
+- [CPU and GPU benchmark methodology](docs/analysis/benchmark-methodology.md)
