@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from benchmark import run_batch_benchmark
-from data import STRUCTURE, load_mnist_data, load_model, save_model, validate_model_data
+from data import STRUCTURE, load_mnist_data, load_model, parse_structure, save_model, validate_model_data
 from dependencies import Network
 from training import evaluate_network, save_metric_plot, train_network
 
@@ -22,6 +22,22 @@ def parse_args():
     )
     parser.add_argument("--verbose", action="store_true", help="Print model details and each test prediction/cost.")
     parser.add_argument("--show-tf-logs", action="store_true", help="Show TensorFlow startup logs.")
+    parser.add_argument(
+        "--backend",
+        choices=("numpy", "cupy"),
+        default="numpy",
+        help="Array backend for --train or --test. Defaults to numpy.",
+    )
+    parser.add_argument(
+        "--backends",
+        default="numpy",
+        help="Comma-separated backends for --benchmark-batches, for example numpy,cupy.",
+    )
+    parser.add_argument(
+        "--structure",
+        default=",".join(map(str, STRUCTURE)),
+        help="Comma-separated layer sizes. MNIST models must start with 784 and end with 10.",
+    )
     parser.add_argument("--model", default="data.json", help="Model file to load and save. Defaults to data.json.")
     parser.add_argument("--epochs", type=int, default=30, help="Number of training epochs. Defaults to 30.")
     parser.add_argument("--learning-rate", type=float, default=0.1, help="Training learning rate. Defaults to 0.1.")
@@ -36,8 +52,28 @@ def parse_args():
         default="1,8,16,32,64,128,256",
         help="Comma-separated batch sizes to compare with --benchmark-batches.",
     )
+    parser.add_argument(
+        "--cpu-batch-sizes",
+        help="Optional comma-separated NumPy batch sizes for an independent CPU peak sweep.",
+    )
+    parser.add_argument(
+        "--gpu-batch-sizes",
+        help="Optional comma-separated CuPy batch sizes for an independent GPU peak sweep.",
+    )
     parser.add_argument("--benchmark-train-limit", type=int, help="Limit benchmark training to the first N examples.")
     parser.add_argument("--benchmark-test-limit", type=int, help="Limit benchmark evaluation to the first N examples.")
+    parser.add_argument(
+        "--benchmark-runs",
+        type=int,
+        default=3,
+        help="Recorded runs per backend and batch size. Defaults to 3.",
+    )
+    parser.add_argument(
+        "--benchmark-warmup-batches",
+        type=int,
+        default=1,
+        help="Unrecorded warm-up batches before every recorded run. Defaults to 1.",
+    )
     parser.add_argument(
         "--benchmark-output",
         default="outputs/batch_benchmark_summary.csv",
@@ -72,19 +108,45 @@ def validate_args(parser, args):
     if args.batch_size <= 0:
         parser.error("--batch-size must be greater than 0.")
 
-    try:
-        args.batch_sizes = [int(size.strip()) for size in args.batch_sizes.split(",") if size.strip()]
-    except ValueError:
-        parser.error("--batch-sizes must be a comma-separated list of integers.")
+    args.batch_sizes = parse_batch_sizes(parser, args.batch_sizes, "--batch-sizes")
+    args.cpu_batch_sizes = parse_batch_sizes(parser, args.cpu_batch_sizes, "--cpu-batch-sizes")
+    args.gpu_batch_sizes = parse_batch_sizes(parser, args.gpu_batch_sizes, "--gpu-batch-sizes")
 
-    if not args.batch_sizes or any(size <= 0 for size in args.batch_sizes):
-        parser.error("--batch-sizes must contain at least one positive integer.")
+    args.backends = [backend.strip() for backend in args.backends.split(",") if backend.strip()]
+    valid_backends = {"numpy", "cupy"}
+    if not args.backends or any(backend not in valid_backends for backend in args.backends):
+        parser.error("--backends must contain one or more of: numpy, cupy.")
+
+    try:
+        args.structure = parse_structure(args.structure)
+    except ValueError as error:
+        parser.error(str(error))
 
     if args.benchmark_train_limit is not None and args.benchmark_train_limit <= 0:
         parser.error("--benchmark-train-limit must be greater than 0.")
 
     if args.benchmark_test_limit is not None and args.benchmark_test_limit <= 0:
         parser.error("--benchmark-test-limit must be greater than 0.")
+
+    if args.benchmark_runs <= 0:
+        parser.error("--benchmark-runs must be greater than 0.")
+
+    if args.benchmark_warmup_batches < 0:
+        parser.error("--benchmark-warmup-batches cannot be negative.")
+
+
+def parse_batch_sizes(parser, value, option):
+    """Parses an optional comma-separated list of positive batch sizes."""
+    if value is None:
+        return None
+    try:
+        batch_sizes = [int(size.strip()) for size in value.split(",") if size.strip()]
+    except ValueError:
+        parser.error(f"{option} must be a comma-separated list of integers.")
+
+    if not batch_sizes or any(size <= 0 for size in batch_sizes):
+        parser.error(f"{option} must contain at least one positive integer.")
+    return batch_sizes
 
 
 def train(args, data, network, train_inputs, train_outputs, test_inputs, test_outputs, test_y):
@@ -140,7 +202,7 @@ def main():
     data = load_model(model_path)
     train_inputs, train_outputs, test_inputs, test_outputs, test_y = load_mnist_data()
 
-    valid = validate_model_data(data, STRUCTURE)
+    valid = validate_model_data(data, args.structure)
     if args.verbose:
         print(f"Valid: {valid}")
 
@@ -150,14 +212,14 @@ def main():
             "structure. Run src/randomiser.py to regenerate the model."
         )
 
-    network = Network(data, STRUCTURE)
+    network = Network(data, args.structure, args.backend)
     if args.verbose:
         print(network)
 
     if args.train:
         train(args, data, network, train_inputs, train_outputs, test_inputs, test_outputs, test_y)
     elif args.benchmark_batches:
-        run_batch_benchmark(args, data, STRUCTURE, train_inputs, train_outputs, test_inputs, test_outputs, test_y)
+        run_batch_benchmark(args, data, args.structure, train_inputs, train_outputs, test_inputs, test_outputs, test_y)
     else:
         test(args, network, test_inputs, test_outputs, test_y)
 

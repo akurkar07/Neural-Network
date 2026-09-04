@@ -17,38 +17,34 @@ I built this as a learning tool to understand matrix-based gradient descent from
 
 ---
 
-## Design Notes
+## GPU Processing
 
-The core network is intentionally written around arrays and matrix operations:
+The network supports NumPy for CPU execution and CuPy for CUDA GPU execution. Install the GPU requirements only when using the CuPy backend.
 
-- each layer stores a weight matrix and bias vector
-- forward propagation uses `weights @ activation + bias`
-- backpropagation uses matrix products, transposes, element-wise sigmoid derivatives, and gradient updates
+Install a CuPy wheel matching the installed CUDA runtime. For current CUDA 12 systems:
 
-That makes the project a good candidate for a GPU version with CuPy. In principle, most NumPy calls in the core math can be swapped for CuPy equivalents because CuPy mirrors much of the NumPy API and runs those array operations on the GPU.
+```powershell
+pip install -r requirements-gpu.txt
+```
 
-A GPU version should still be designed carefully around data movement. The important rule is to keep arrays on the GPU during training instead of repeatedly converting between NumPy arrays and CuPy arrays. The algorithm does not need to be redesigned around manual parallelism; the matrix operations already expose parallel work, and CuPy delegates that work to CUDA kernels. The main redesign is therefore an array-backend layer, for example choosing `numpy` or `cupy` as `xp`, plus explicit conversion when loading JSON, saving JSON, or interacting with TensorFlow/Keras data.
+Run an individual GPU training or test job with `--backend cupy`:
 
----
+```powershell
+python src/main.py --train --backend cupy --model models/fresh.json --epochs 5 --batch-size 256
+```
 
-## Batch Processing
+Benchmark CPU and GPU backends with the same model and settings:
 
-The original training loop updated the model after every image. With per-image processing, one MNIST example is reshaped into a column vector, passed through the network, backpropagated, and immediately used to update the weights.
+```powershell
+python src/main.py --benchmark-batches --backends numpy,cupy --epochs 5 --learning-rate 0.1 --batch-sizes 256 --benchmark-output outputs/numpy_vs_cupy_full_summary.csv --benchmark-history-output outputs/numpy_vs_cupy_full_history.csv --benchmark-plot docs/assets/numpy_vs_cupy_full_stats.png
+```
 
-Mini-batch processing groups multiple images into one matrix. For example, batch size `16` turns sixteen `(784,)` inputs into a single `(784, 16)` activation matrix internally. The same matrix-based forward and backward equations still apply, but each update uses the average gradient from sixteen examples instead of one example.
+Create a configurable, seeded model:
 
-This matters because the expensive work is matrix multiplication. Doing more examples per matrix operation reduces Python loop overhead and gives NumPy larger, more efficient array operations to run. It also matches the shape of the later GPU/CuPy version: fewer, larger matrix operations are much better for GPU acceleration than many tiny per-image operations.
-
-Full MNIST benchmark, using `60,000` training examples, `10,000` test examples, 5 epochs, and learning rate `0.1`:
-
-![Batch size benchmark comparing per-image processing with batch size 16](docs/assets/batch_1_vs_16_full_stats.png)
-
-| Batch size | Processing style | Weight updates | Total time | Examples/sec | Test accuracy |
-|---:|---|---:|---:|---:|---:|
-| 1 | per-image update | 300,000 | 83.96s | 3,573.20 | 92.59% |
-| 16 | mini-batch update | 18,750 | 5.68s | 52,850.24 | 92.40% |
-
-Batch size `16` was about `14.8x` faster in this run while keeping almost the same accuracy. The per-image version made more frequent updates and ended slightly higher on accuracy, but it took far longer. The mini-batch version is usually the better trade-off when the goal is efficient training, especially as the project moves toward a GPU backend.
+```powershell
+python src/randomiser.py models/medium.json --structure 784,512,512,10 --seed 42
+python src/main.py --train --model models/medium.json --structure 784,512,512,10 --backend cupy --epochs 5 --batch-size 256
+```
 
 ---
 
@@ -114,13 +110,20 @@ Useful flags:
 - `--test` - Evaluate a model against the MNIST test set
 - `--train` - Train a model and save updated weights/biases
 - `--benchmark-batches` - Compare training cost, timing, throughput, and test accuracy across batch sizes
+- `--backend BACKEND` - Use `numpy` (CPU, default) or `cupy` (CUDA GPU) for training or testing
+- `--backends LIST` - Comma-separated backends for `--benchmark-batches`, for example `numpy,cupy`
+- `--structure LAYERS` - Comma-separated MNIST layer sizes, for example `784,512,512,10`
 - `--model PATH` - Load/save a specific model file
 - `--epochs N` - Number of training epochs
 - `--learning-rate VALUE` - Training learning rate
 - `--batch-size N` - Number of examples per training update
 - `--batch-sizes LIST` - Comma-separated batch sizes for benchmarking, for example `1,8,32,128`
+- `--cpu-batch-sizes LIST` - Optional NumPy-only batch-size sweep for best-tested CPU throughput
+- `--gpu-batch-sizes LIST` - Optional CuPy-only batch-size sweep for best-tested GPU throughput
 - `--benchmark-train-limit N` - Limit benchmark training examples for quicker comparisons
 - `--benchmark-test-limit N` - Limit benchmark test examples for quicker comparisons
+- `--benchmark-runs N` - Recorded runs per backend and batch size; defaults to 3
+- `--benchmark-warmup-batches N` - Unrecorded CuPy warm-up batches before each run; defaults to 1
 - `--benchmark-output PATH` - Save benchmark summary stats as CSV
 - `--benchmark-history-output PATH` - Save per-epoch benchmark stats as CSV
 - `--benchmark-plot PATH` - Save benchmark comparison graphs
@@ -166,3 +169,19 @@ python src/randomiser.py models/fresh.json --force
 ```
 
 The scripts download MNIST through TensorFlow/Keras if needed. TensorFlow startup logs are hidden by default during `main.py` runs.
+
+## Verification
+
+Run the regression suite, including CPU/GPU output parity when CuPy is installed:
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+## Analysis and Results
+
+- [Batch processing analysis](docs/analysis/batch-processing.md)
+- [CPU and GPU performance report](docs/analysis/gpu-performance-report.md)
+- [Medium-model GPU follow-up](docs/analysis/gpu-medium-model-follow-up.md)
+- [Medium-model quality training](docs/analysis/medium-model-quality-training.md)
+- [CPU and GPU benchmark methodology](docs/analysis/benchmark-methodology.md)
