@@ -2,14 +2,14 @@
 
 ## Result
 
-The full MNIST benchmark trained the same `[784, 16, 16, 10]` model from the same starting weights for 5 epochs, using a learning rate of `0.1` and a batch size of `256`.
+The full MNIST benchmark ran the same `[784, 16, 16, 10]` model for 5 epochs, using a learning rate of `0.1` and a batch size of `256`. It loaded `data.json`, which was already trained to `92.33%` test accuracy before this benchmark.
 
 | Backend | Hardware | Total time | Examples/sec | Test accuracy | Final average cost |
 |---|---|---:|---:|---:|---:|
 | NumPy | CPU | 2.11s | 142,103.98 | 92.25% | 0.105871 |
 | CuPy | NVIDIA GeForce RTX 3060 | 8.27s | 36,255.72 | 92.25% | 0.105871 |
 
-NumPy was `3.9x` faster overall. The matching cost and accuracy establish that both backends performed the same training calculation; this is a workload-size result, not a correctness problem in the GPU version.
+NumPy was `3.9x` faster overall. The matching cost and accuracy establish that both backends performed the same training calculation; this is a workload-size result, not a correctness problem in the GPU version. Because the saved model was already trained, this experiment measures backend performance and numerical parity rather than five-epoch convergence from fresh weights.
 
 The planned medium-model experiment was completed successfully. See the [medium-model GPU follow-up](gpu-medium-model-follow-up.md) for its results.
 
