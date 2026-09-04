@@ -21,15 +21,35 @@ The benchmark used the full MNIST dataset for one epoch with a Xavier-initialize
 
 | Batch size | NumPy median examples/sec | CuPy median examples/sec | CuPy advantage | Matching test accuracy |
 |---:|---:|---:|---:|---:|
-| 256 | 19,434.68 | 72,329.84 | 3.7x | 41.68% |
-| 1024 | 20,771.66 | 294,824.94 | 14.2x | 19.63% |
-| 2048 | 21,818.94 | 490,936.90 | 22.5x | 16.36% |
+| 256 | 22,762.95 | 87,890.54 | 3.9x | 41.68% |
+| 1024 | 26,005.88 | 331,404.01 | 12.7x | 19.63% |
+| 2048 | 26,089.61 | 583,037.68 | 22.3x | 16.36% |
 
-CuPy was faster at every tested batch size. At batch size `2048`, its median throughput was `22.5x` higher than NumPy's. CPU and GPU runs reached the same final accuracy and cost for every matching configuration, so the difference is a performance crossover rather than a change in training semantics.
+CuPy was faster at every tested batch size. At batch size `2048`, its median throughput was `22.3x` higher than NumPy's. CPU and GPU runs reached the same final accuracy and cost for every matching configuration, so the difference is a performance crossover rather than a change in training semantics.
 
 ## Why the GPU Won
 
 The medium network has roughly `669,000` weights, compared with `12,960` in the original network. The larger dense matrix multiplications provide enough work per CUDA launch for the RTX 3060 to amortize launch overhead and use its parallel capacity. Larger batches reduce the number of updates and launches per epoch, which increases the GPU advantage further.
+
+## Choosing Hardware for Local Models
+
+| Consideration | CPU | GPU |
+|---|---|---|
+| Small models or small batches | Usually faster because there is no kernel-launch overhead | Often underused; launch and synchronization overhead can dominate |
+| Large dense models or large batches | Can become the bottleneck as matrix sizes grow | Usually faster because thousands of cores can work on matrix operations together |
+| Interactive single requests | Good choice when low setup latency matters | Useful only when the model is already resident on the GPU or each request is substantial |
+| Batch inference or training | Throughput grows modestly with more CPU cores | Strong choice when requests can be batched and GPU memory holds the model and data |
+| Memory capacity | Uses system RAM, which is usually larger and easier to expand | Limited by VRAM; model weights, activations, and batches must all fit |
+| Memory transfer | No device transfer when data is already in RAM | Host-to-device copies can erase gains if data moves for every request or batch |
+| Power and noise | Usually lower for modest local workloads | Often higher, especially under sustained training or inference |
+| Setup and portability | Simple NumPy environment; works on most machines | Requires compatible hardware, drivers, CUDA, and a matching CuPy package |
+| Cost | Uses hardware already present in most systems | Requires a suitable discrete GPU; cloud GPUs add hourly cost |
+
+Use the CPU for small local models, one-off predictions, development runs, and workloads that cannot batch requests or fit in GPU VRAM. It is simpler, starts quickly, and may be faster, as the original `[784, 16, 16, 10]` benchmark demonstrated.
+
+Use the GPU for training or batch inference when the model has large matrix operations, batches can be made large enough, and weights plus working data remain in VRAM. This medium-model benchmark is the relevant local example: once the workload grew to `[784, 512, 512, 10]`, the GPU delivered up to `22.3x` the CPU throughput at the same batch size.
+
+For local language or image models, load the model once and send multiple requests together where latency requirements permit. Avoid transferring the model or individual inputs between RAM and VRAM for every operation; device residency is often the difference between a GPU win and a GPU slowdown.
 
 ## Benchmarking Changes
 

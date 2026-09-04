@@ -43,6 +43,119 @@ def add_summary_statistics(summary_records):
             record["median_examples_per_second"] = statistics.median(throughputs)
 
 
+def save_single_epoch_benchmark_plot(summary_records, plot_path):
+    """Saves a compact comparison chart for repeated one-epoch benchmark runs."""
+    import matplotlib.pyplot as plt
+
+    backend_order = {"numpy": 0, "cupy": 1}
+    colors = {"numpy": "#2563eb", "cupy": "#f97316"}
+    configurations = sorted(
+        {(record["backend"], record["batch_size"]) for record in summary_records},
+        key=lambda configuration: (configuration[1], backend_order.get(configuration[0], 2)),
+    )
+    records = [
+        next(
+            record
+            for record in summary_records
+            if record["backend"] == backend and record["batch_size"] == batch_size
+        )
+        for backend, batch_size in configurations
+    ]
+    batch_sizes = sorted({record["batch_size"] for record in records})
+    numpy_records = {record["batch_size"]: record for record in records if record["backend"] == "numpy"}
+    cupy_records = {record["batch_size"]: record for record in records if record["backend"] == "cupy"}
+
+    fig, axes = plt.subplots(2, 2, figsize=(13, 8))
+    fig.suptitle("CPU and GPU one-epoch benchmark", fontsize=16)
+
+    positions = range(len(batch_sizes))
+    bar_width = 0.36
+    for backend, backend_records, offset in (
+        ("numpy", numpy_records, -bar_width / 2),
+        ("cupy", cupy_records, bar_width / 2),
+    ):
+        values = [backend_records[batch_size]["median_examples_per_second"] for batch_size in batch_sizes]
+        axes[0, 0].bar(
+            [position + offset for position in positions],
+            values,
+            width=bar_width,
+            color=colors[backend],
+            label=backend,
+        )
+    axes[0, 0].set_title("Median training throughput")
+    axes[0, 0].set_ylabel("Examples per second")
+    axes[0, 0].set_xticks(list(positions), batch_sizes)
+    axes[0, 0].set_xlabel("Batch size")
+    axes[0, 0].legend(title="Backend")
+
+    speedups = [
+        cupy_records[batch_size]["median_examples_per_second"]
+        / numpy_records[batch_size]["median_examples_per_second"]
+        for batch_size in batch_sizes
+    ]
+    bars = axes[0, 1].bar(list(positions), speedups, color=colors["cupy"])
+    axes[0, 1].axhline(1, color="black", linewidth=1)
+    axes[0, 1].set_title("CuPy speedup over NumPy")
+    axes[0, 1].set_ylabel("Times faster")
+    axes[0, 1].set_xticks(list(positions), batch_sizes)
+    axes[0, 1].set_xlabel("Batch size")
+    for bar, speedup in zip(bars, speedups):
+        axes[0, 1].text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height(),
+            f"{speedup:.1f}x",
+            ha="center",
+            va="bottom",
+        )
+
+    for backend, backend_records, offset in (
+        ("numpy", numpy_records, -bar_width / 2),
+        ("cupy", cupy_records, bar_width / 2),
+    ):
+        durations = [backend_records[batch_size]["median_total_seconds"] for batch_size in batch_sizes]
+        minimums = [backend_records[batch_size]["minimum_total_seconds"] for batch_size in batch_sizes]
+        maximums = [backend_records[batch_size]["maximum_total_seconds"] for batch_size in batch_sizes]
+        axes[1, 0].bar(
+            [position + offset for position in positions],
+            durations,
+            width=bar_width,
+            color=colors[backend],
+            yerr=[
+                [duration - minimum for duration, minimum in zip(durations, minimums)],
+                [maximum - duration for duration, maximum in zip(durations, maximums)],
+            ],
+            capsize=3,
+            label=backend,
+        )
+    axes[1, 0].set_title("Median epoch time with run range")
+    axes[1, 0].set_ylabel("Seconds")
+    axes[1, 0].set_xticks(list(positions), batch_sizes)
+    axes[1, 0].set_xlabel("Batch size")
+    axes[1, 0].legend(title="Backend")
+
+    for backend, backend_records, offset in (
+        ("numpy", numpy_records, -bar_width / 2),
+        ("cupy", cupy_records, bar_width / 2),
+    ):
+        accuracies = [backend_records[batch_size]["test_accuracy"] for batch_size in batch_sizes]
+        axes[1, 1].bar(
+            [position + offset for position in positions],
+            accuracies,
+            width=bar_width,
+            color=colors[backend],
+            label=backend,
+        )
+    axes[1, 1].set_title("Matching test accuracy")
+    axes[1, 1].set_ylabel("Accuracy (%)")
+    axes[1, 1].set_xticks(list(positions), batch_sizes)
+    axes[1, 1].set_xlabel("Batch size")
+    axes[1, 1].legend(title="Backend")
+
+    fig.tight_layout()
+    fig.savefig(plot_path, dpi=160)
+    plt.close(fig)
+
+
 def save_benchmark_plot(summary_records, history_records, plot_path):
     """Saves comparison graphs for benchmark records."""
     import matplotlib
@@ -53,29 +166,77 @@ def save_benchmark_plot(summary_records, history_records, plot_path):
     plot_path = Path(plot_path)
     plot_path.parent.mkdir(parents=True, exist_ok=True)
 
-    configurations = sorted({(record["backend"], record["batch_size"], record["run"]) for record in history_records})
+    if max(record["epoch"] for record in history_records) == 1:
+        save_single_epoch_benchmark_plot(summary_records, plot_path)
+        return
+
+    backend_order = {"numpy": 0, "cupy": 1}
+    configurations = sorted(
+        {(record["backend"], record["batch_size"]) for record in summary_records},
+        key=lambda configuration: (configuration[1], backend_order.get(configuration[0], 2)),
+    )
+    backend_colors = {"numpy": "tab:blue", "cupy": "tab:orange"}
     fig, axes = plt.subplots(2, 3, figsize=(16, 9))
     fig.suptitle("Training backend and batch size benchmark")
 
-    for backend, batch_size, run in configurations:
+    for backend, batch_size in configurations:
         records = [
             record
             for record in history_records
-            if record["backend"] == backend and record["batch_size"] == batch_size and record["run"] == run
+            if record["backend"] == backend and record["batch_size"] == batch_size
         ]
-        epochs = [record["epoch"] for record in records]
-        label = f"{backend}, batch {batch_size}, run {run}"
+        epochs = sorted({record["epoch"] for record in records})
+        median_records = []
+        for epoch in epochs:
+            epoch_records = [record for record in records if record["epoch"] == epoch]
+            median_records.append(
+                {
+                    "train_average_cost": statistics.median(record["train_average_cost"] for record in epoch_records),
+                    "test_accuracy": statistics.median(record["test_accuracy"] for record in epoch_records),
+                    "test_average_cost": statistics.median(record["test_average_cost"] for record in epoch_records),
+                    "epoch_seconds": statistics.median(record["epoch_seconds"] for record in epoch_records),
+                    "minimum_epoch_seconds": min(record["epoch_seconds"] for record in epoch_records),
+                    "maximum_epoch_seconds": max(record["epoch_seconds"] for record in epoch_records),
+                }
+            )
 
-        axes[0, 0].plot(epochs, [record["train_average_cost"] for record in records], marker="o", label=label)
+        label = f"{backend}, batch {batch_size}"
+        color = backend_colors.get(backend)
         axes[0, 0].plot(
             epochs,
-            [record["test_average_cost"] for record in records],
+            [record["train_average_cost"] for record in median_records],
+            marker="o",
+            color=color,
+            label=label,
+        )
+        axes[0, 0].plot(
+            epochs,
+            [record["test_average_cost"] for record in median_records],
             marker="x",
             linestyle="--",
+            color=color,
             label=f"{label} test",
         )
-        axes[0, 1].plot(epochs, [record["test_accuracy"] for record in records], marker="o", label=label)
-        axes[1, 0].plot(epochs, [record["epoch_seconds"] for record in records], marker="o", label=label)
+        axes[0, 1].plot(
+            epochs,
+            [record["test_accuracy"] for record in median_records],
+            marker="o",
+            color=color,
+            label=label,
+        )
+        median_seconds = [record["epoch_seconds"] for record in median_records]
+        axes[1, 0].errorbar(
+            epochs,
+            median_seconds,
+            yerr=[
+                [value - record["minimum_epoch_seconds"] for value, record in zip(median_seconds, median_records)],
+                [record["maximum_epoch_seconds"] - value for value, record in zip(median_seconds, median_records)],
+            ],
+            marker="o",
+            color=color,
+            capsize=3,
+            label=label,
+        )
 
     axes[0, 0].set_title("Train/test cost")
     axes[0, 0].set_xlabel("Epoch")
@@ -92,13 +253,30 @@ def save_benchmark_plot(summary_records, history_records, plot_path):
     axes[1, 0].set_ylabel("Seconds")
     axes[1, 0].legend()
 
-    labels = [f"{record['backend']}\nbatch {record['batch_size']}" for record in summary_records]
-    throughput = [record["examples_per_second"] for record in summary_records]
-    speedups = [
-        record["examples_per_second"] / summary_records[0]["examples_per_second"]
-        for record in summary_records
+    configuration_records = [
+        next(
+            record
+            for record in summary_records
+            if record["backend"] == backend and record["batch_size"] == batch_size
+        )
+        for backend, batch_size in configurations
     ]
-    bars = axes[1, 1].bar(labels, throughput)
+    labels = [f"{record['backend']}\nbatch {record['batch_size']}" for record in configuration_records]
+    throughput = [record["median_examples_per_second"] for record in configuration_records]
+    numpy_throughput = {
+        record["batch_size"]: record["median_examples_per_second"]
+        for record in configuration_records
+        if record["backend"] == "numpy"
+    }
+    speedups = [
+        value / numpy_throughput.get(record["batch_size"], throughput[0])
+        for record, value in zip(configuration_records, throughput)
+    ]
+    bars = axes[1, 1].bar(
+        labels,
+        throughput,
+        color=[backend_colors.get(record["backend"]) for record in configuration_records],
+    )
     axes[1, 1].set_title("Throughput and speedup")
     axes[1, 1].set_xlabel("Batch size")
     axes[1, 1].set_ylabel("Examples/second")
@@ -111,15 +289,19 @@ def save_benchmark_plot(summary_records, history_records, plot_path):
             va="bottom",
         )
 
-    updates_per_epoch = [record["updates"] / record["epochs"] for record in summary_records]
-    axes[0, 2].bar(labels, updates_per_epoch)
+    updates_per_epoch = [record["updates"] / record["epochs"] for record in configuration_records]
+    axes[0, 2].bar(
+        labels,
+        updates_per_epoch,
+        color=[backend_colors.get(record["backend"]) for record in configuration_records],
+    )
     axes[0, 2].set_title("Updates per epoch")
     axes[0, 2].set_xlabel("Batch size")
     axes[0, 2].set_ylabel("Weight updates")
 
-    baseline = summary_records[0]
-    best_accuracy = max(summary_records, key=lambda record: record["test_accuracy"])
-    fastest = max(summary_records, key=lambda record: record["examples_per_second"])
+    baseline = configuration_records[0]
+    best_accuracy = max(configuration_records, key=lambda record: record["test_accuracy"])
+    fastest = max(configuration_records, key=lambda record: record["median_examples_per_second"])
     summary_lines = [
         f"Epochs: {baseline['epochs']}",
         f"Learning rate: {baseline['learning_rate']}",
@@ -127,17 +309,17 @@ def save_benchmark_plot(summary_records, history_records, plot_path):
         f"Train examples: {baseline['train_examples']}",
         f"Test examples: {baseline['test_examples']}",
         "",
-        f"Fastest: {fastest['backend']} batch {fastest['batch_size']} ({speedups[summary_records.index(fastest)]:.1f}x)",
+        f"Fastest: {fastest['backend']} batch {fastest['batch_size']} ({speedups[configuration_records.index(fastest)]:.1f}x)",
         f"Best accuracy: {best_accuracy['backend']} batch {best_accuracy['batch_size']} ({best_accuracy['test_accuracy']:.2f}%)",
         "",
         "Final rows:",
     ]
-    for record in summary_records:
+    for record in configuration_records:
         summary_lines.append(
-                f"{record['backend']} batch {record['batch_size']}: "
+            f"{record['backend']} batch {record['batch_size']}: "
             f"acc {record['test_accuracy']:.2f}%, "
             f"wrong {record['wrong']}/{record['test_examples']}, "
-            f"time {record['total_seconds']:.2f}s"
+            f"median {record['median_total_seconds']:.2f}s"
         )
 
     axes[1, 2].axis("off")
